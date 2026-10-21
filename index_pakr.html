@@ -4812,6 +4812,10 @@ var backpackTab = 'all';
       name: 'Seastar'
     }, {
       name: '清浅'
+    }, {
+      name: '𝓛𝓾𝓬𝓲𝓯𝓮𝓻'
+    }, {
+      name: 'Cyou2'
     }],
     repo: '地球Online · 人生记录'
   };
@@ -5468,9 +5472,7 @@ var backpackTab = 'all';
       },
       // v1.2.0：彩蛋计数器（整数桶）。只放「无法从既有数据推导」的事件计数，
       // 能从 tasks/memos/... 推导的彩蛋一律实时算，不入档（避免冗余状态）。
-      eggs: {
-        blankTitleTries: 0
-      }
+      eggs: sanitizeEggs(null) // v1.0.5：种子也走白名单清洗，保证 defaultState 与 sanitizeState 输出形态一致（save→load 幂等）
     };
   }
 

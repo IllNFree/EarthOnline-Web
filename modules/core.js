@@ -150,6 +150,8 @@ const APP_INFO = {
     { name: '海神唐三' },
     { name: 'Seastar' },
     { name: '清浅' },
+    { name: '𝓛𝓾𝓬𝓲𝓯𝓮𝓻' },
+    { name: 'Cyou2' },
   ],
   repo: '地球Online · 人生记录',
 };
