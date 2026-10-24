@@ -32,12 +32,12 @@
 | 文件 | 作用 |
 |---|---|
 | `contract/backup_contract.sample.json` | 规范样例：Web 导出（wire）格式，覆盖 birthDate / customFields / tags / 多集合按主键合并场景与边缘情况（空 tags、doneAt=null）。 |
-| `web/validate_backup_contract.js` | Web 端零依赖校验器（`node` 直接运行）。断言：① 全键 camelCase；② birthDate 格式；③ customFields 内层键与可逆序列化；④ tags 字符串数组与可逆序列化；⑤ 按主键合并语义（本地独有保留 / 云端同键覆盖）。 |
+| `web/validate_backup_contract.cjs` | Web 端零依赖校验器（`node` 直接运行）。断言：① 全键 camelCase；② birthDate 格式；③ customFields 内层键与可逆序列化；④ tags 字符串数组与可逆序列化；⑤ 按主键合并语义（本地独有保留 / 云端同键覆盖）。 |
 | `README.md` | 本方案文档。 |
 
 运行 Web 校验器（无需安装依赖）：
 ```bash
-node EarthOnline-Tests/web/validate_backup_contract.js
+node EarthOnline-Tests/web/validate_backup_contract.cjs
 ```
 
 ## 4. 计划新增的验证文件（后续批次，待允许构建时执行）

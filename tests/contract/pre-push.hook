@@ -11,8 +11,8 @@ if ! command -v node >/dev/null 2>&1; then
   exit 0
 fi
 
-echo "[pre-push] 运行跨端契约校验 tests/contract/validate_backup_contract.js ..."
-node tests/contract/validate_backup_contract.js
+echo "[pre-push] 运行跨端契约校验 tests/contract/validate_backup_contract.cjs ..."
+node tests/contract/validate_backup_contract.cjs
 RC=$?
 
 if [ "$RC" -ne 0 ]; then
