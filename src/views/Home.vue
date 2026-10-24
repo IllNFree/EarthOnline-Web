@@ -4,22 +4,82 @@ import { useRouter } from 'vue-router'
 import { useAppStore } from '../stores/app.js'
 import { getLifeStats, growthStageOf, todayStr } from '../lib/model.js'
 import Icon from '../components/Icon.vue'
+import Modal from '../components/GlassBottomSheet.vue'
+import GlassUploader from '../components/GlassUploader.vue'
 
 const store = useAppStore()
 const router = useRouter()
 const p2d = (n) => String(n).padStart(2, '0')
 const today = todayStr()
+const go = (to) => router.push(to)
 
-// ---- 速览 = 唯一快捷操作入口：跳转主页面并自动弹开对应操作窗口（?add=1） ----
+// ---- 速览 = 主页内悬浮快捷操作（不跳转，弹 GlassDialog 内联表单） ----
 const quickActions = [
-  { label: '写笔记', icon: 'note', tint: '#7A6FA8', bg: '#ECE9F4', to: '/notes?add=1' },
-  { label: '记一笔', icon: 'wallet', tint: '#4E9668', bg: '#E3EFE6', to: '/ledger?add=1' },
-  { label: '新任务', icon: 'tasks', tint: '#B08553', bg: '#F5E9DA', to: '/tasks?add=1' },
-  { label: '传照片', icon: 'album', tint: '#5F8F63', bg: '#E5F0E2', to: '/album?add=1' },
-  { label: '留足迹', icon: 'map-pin', tint: '#5B7E9E', bg: '#E2EAF2', to: '/map?add=1' },
-  { label: '看数据', icon: 'chart', tint: '#C4634C', bg: '#F6E5DF', to: '/stats' }
+  { key: 'note', label: '写笔记', icon: 'note', tint: '#7A6FA8', bg: '#ECE9F4' },
+  { key: 'ledger', label: '记一笔', icon: 'wallet', tint: '#4E9668', bg: '#E3EFE6' },
+  { key: 'task', label: '新任务', icon: 'tasks', tint: '#B08553', bg: '#F5E9DA' },
+  { key: 'album', label: '传照片', icon: 'album', tint: '#5F8F63', bg: '#E5F0E2' },
+  { key: 'map', label: '留足迹', icon: 'map-pin', tint: '#5B7E9E', bg: '#E2EAF2' },
+  { key: 'stats', label: '看数据', icon: 'chart', tint: '#C4634C', bg: '#F6E5DF' }
 ]
-function go(to) { router.push(to) }
+const qTitles = { note: '写笔记', ledger: '记一笔', task: '新建任务', album: '添加照片', map: '留足迹', stats: '数据中心' }
+const qOpen = ref(false)
+const qKey = ref('')
+const qTitle = computed(() => qTitles[qKey.value] || '')
+function openQuick(key) {
+  qKey.value = key
+  noteForm.value = { title: '', tags: '', markdown: '' }
+  ledForm.value = { type: 'expense', amount: '', category: '', date: today, note: '' }
+  taskForm.value = { title: '', category: 'side', dueDate: '', dueTime: '', note: '' }
+  photoForm.value = { name: '', tags: '', dataUrl: '' }
+  qOpen.value = true
+}
+function closeQuick() { qOpen.value = false }
+function goMap() { qOpen.value = false; router.push('/map') }
+function goStats() { qOpen.value = false; router.push('/stats') }
+
+// 内联快捷表单
+const noteForm = ref({ title: '', tags: '', markdown: '' })
+function saveNote() {
+  const r = store.addMemo({ title: noteForm.value.title, tags: noteForm.value.tags, markdown: noteForm.value.markdown })
+  if (!r.ok) return store.showToast(r.error)
+  store.showToast('已保存笔记'); closeQuick()
+}
+const ledForm = ref({ type: 'expense', amount: '', category: '', date: '', note: '' })
+function saveLed() {
+  const r = store.addLedgerRecord({ ...ledForm.value, amount: Number(ledForm.value.amount) })
+  if (!r.ok) return store.showToast(r.error)
+  store.showToast('已记账'); closeQuick()
+}
+const taskForm = ref({ title: '', category: 'side', dueDate: '', dueTime: '', note: '' })
+const taskDueLocal = computed({
+  get() { return (taskForm.value.dueDate || '') + (taskForm.value.dueTime ? 'T' + taskForm.value.dueTime : '') },
+  set(v) {
+    if (!v) { taskForm.value.dueDate = ''; taskForm.value.dueTime = ''; return }
+    const [d, t] = String(v).split('T')
+    taskForm.value.dueDate = d || ''; taskForm.value.dueTime = t ? t.slice(0, 5) : ''
+  }
+})
+function saveTask() {
+  const f = taskForm.value
+  if (!String(f.title || '').trim()) return store.showToast('标题不能为空')
+  const r = store.addTask({ title: f.title, category: f.category, status: 'active', note: f.note, dueDate: f.dueDate, dueTime: f.dueTime, parentId: null, tags: f.tags })
+  if (!r.ok) return store.showToast(r.error)
+  store.showToast('已创建任务'); closeQuick()
+}
+const photoForm = ref({ name: '', tags: '', dataUrl: '' })
+function pickPhoto(f) {
+  if (!f) return
+  const r = new FileReader()
+  r.onload = () => { photoForm.value.dataUrl = r.result }
+  r.readAsDataURL(f)
+}
+function savePhoto() {
+  if (!photoForm.value.dataUrl) return store.showToast('请选择图片')
+  const r = store.addPhoto({ ...photoForm.value, category: '' })
+  if (!r.ok) return store.showToast(r.error)
+  store.showToast('已存入相册'); closeQuick()
+}
 
 // ---- 今日数据看板 ----
 const dash = computed(() => {
@@ -82,55 +142,49 @@ const timeline = computed(() => {
 })
 function statusLabelOf(s) { return ({ planning: '规划中', active: '进行中', paused: '搁置', done: '已完成' })[s] || s }
 
-// ---- 核心数据卡片堆叠：纯主展示（只看不操作，点击进详情）+ CSS 3D 层叠 ----
+// ---- 核心数据卡片堆叠：纯主展示（只看不操作）+ 真 3D 层叠（当前居中、后方露边、景深阴影） ----
 const stack = computed(() => {
   const cards = []
-  // 人生进度
   if (store.data.birthDate) {
     cards.push({
       icon: stage.value.icon, tint: 'primary', title: '人生进度',
       bar: life.value.progress, big: Math.round(life.value.progress * 100) + '%', unit: stage.value.label,
-      sub: '已活 ' + life.value.daysLived + ' 天 · ' + store.xp + ' XP', to: '/settings'
+      sub: '已活 ' + life.value.daysLived + ' 天 · ' + store.xp + ' XP'
     })
   } else {
-    cards.push({ icon: 'egg', tint: 'primary', title: '人生进度', big: '—', unit: '未开启', sub: '在「设置」中填写生日后开启', to: '/settings' })
+    cards.push({ icon: 'egg', tint: 'primary', title: '人生进度', big: '—', unit: '未开启', sub: '在「设置」中填写生日后开启' })
   }
-  // 今日任务
   const todayDueList = (dueMap.value[todayKey] || []).filter((t) => t.status !== 'done')
   cards.push({
     icon: 'tasks', tint: 'bad', title: '今日任务',
     big: String(todayDueList.length), unit: '项待完成',
-    sub: todayDueList.length ? todayDueList.slice(0, 3).map((t) => t.title).join('、') : '今天没有截止任务',
-    to: '/tasks'
+    sub: todayDueList.length ? todayDueList.slice(0, 3).map((t) => t.title).join('、') : '今天没有截止任务'
   })
-  // 本月收支
   const mk = todayKey.slice(0, 7)
   let exp = 0, inc = 0
   store.data.ledger.records.forEach((r) => { if (r.date.startsWith(mk)) { if (r.type === 'income') inc += r.amount; else exp += r.amount } })
   cards.push({
     icon: 'wallet', tint: 'good', title: '本月收支',
     big: (inc - exp).toFixed(0), unit: '元结余',
-    sub: '收入 ' + inc.toFixed(0) + ' · 支出 ' + exp.toFixed(0), to: '/ledger'
+    sub: '收入 ' + inc.toFixed(0) + ' · 支出 ' + exp.toFixed(0)
   })
-  // 笔记与相册
   const lastMemo = (store.data.memos || []).slice().sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))[0]
   cards.push({
     icon: 'note', tint: 'accent', title: '笔记',
     big: String(store.data.memos.length), unit: '篇',
-    sub: lastMemo ? (lastMemo.title || '无标题') : '还没有笔记', to: '/notes'
+    sub: lastMemo ? (lastMemo.title || '无标题') : '还没有笔记'
   })
   const lastPhoto = (store.data.photos || []).slice().sort((a, b) => ((a.createdAt || '') < (b.createdAt || '') ? 1 : -1))[0]
   cards.push({
     icon: 'album', tint: 'primary', title: '相册',
     big: String(store.data.photos.length), unit: '张回忆',
-    sub: lastPhoto ? '最近一张：' + (lastPhoto.name || '') : '还没有照片', to: '/album'
+    sub: lastPhoto ? '最近一张：' + (lastPhoto.name || '') : '还没有照片'
   })
-  // 足迹
   const lastLoc = (store.data.locations || []).slice().sort((a, b) => (a.date < b.date ? 1 : -1))[0]
   cards.push({
     icon: 'map-pin', tint: 'good', title: '足迹',
     big: String(store.data.locations.length), unit: '个地点',
-    sub: lastLoc ? lastLoc.name + ' · ' + lastLoc.date : '还没有足迹', to: '/map'
+    sub: lastLoc ? lastLoc.name + ' · ' + lastLoc.date : '还没有足迹'
   })
   return cards
 })
@@ -144,12 +198,20 @@ function relPos(i) {
 function cardStyle(i) {
   const k = relPos(i)
   if (k > 2) return 'display:none'
-  // 后方卡片微微上移缩进露出边缘（景深层叠），前面卡片带深阴影
-  const t = { 0: 'translate3d(0,0,0) scale(1)', 1: 'translate3d(0,-16px,-52px) scale(.955)', 2: 'translate3d(0,-30px,-100px) scale(.91)' }[k]
-  const opacity = { 0: 1, 1: .8, 2: .55 }[k]
-  const shadow = { 0: '0 22px 44px -18px rgba(154,124,88,.45)', 1: '0 12px 26px -16px rgba(154,124,88,.28)', 2: '0 8px 18px -14px rgba(154,124,88,.2)' }[k]
+  // 真 3D 层叠：当前卡居中，后方卡片向下微移+缩小+退到 z 轴后方，露出上缘形成景深
+  const t = {
+    0: 'translate3d(0,0,0) scale(1)',
+    1: 'translate3d(0,16px,-46px) scale(.94)',
+    2: 'translate3d(0,30px,-92px) scale(.88)'
+  }[k]
+  const opacity = { 0: 1, 1: .82, 2: .55 }[k]
+  const shadow = {
+    0: '0 24px 48px -20px rgba(154,124,88,.5)',
+    1: '0 14px 30px -18px rgba(154,124,88,.3)',
+    2: '0 10px 22px -16px rgba(154,124,88,.22)'
+  }[k]
   let tf = t
-  if (k === 0 && dragX.value) tf = 'translate3d(' + dragX.value + 'px,0,0) rotate(' + (dragX.value * 0.04) + 'deg) scale(1)'
+  if (k === 0 && dragX.value) tf = 'translate3d(' + dragX.value + 'px,0,0) rotate(' + (dragX.value * 0.035) + 'deg) scale(1)'
   const pos = k === 0 ? 'position:relative;z-index:3' : 'position:absolute;left:0;right:0;top:0;z-index:' + (k === 1 ? 2 : 1) + ';pointer-events:auto'
   return 'display:block;' + pos + ';transform:' + tf + ';opacity:' + opacity + ';box-shadow:' + shadow + (k === 0 && dragging.value ? ';transition:none' : '')
 }
@@ -181,11 +243,6 @@ function onPointerUp(e) {
   dragX.value = 0
   setTimeout(() => { didDrag.value = false }, 80)
 }
-function onCardClick(i, c) {
-  if (didDrag.value) return
-  if (relPos(i) === 0) go(c.to)
-  else stackShift(1)
-}
 </script>
 
 <template>
@@ -193,12 +250,12 @@ function onCardClick(i, c) {
     <!-- 问候 -->
     <div class="muted" style="font-size:14px;margin:0 4px 8px">{{ greeting }}{{ store.data.profile.name ? '，' + store.data.profile.name : '' }}</div>
 
-    <!-- 核心卡片堆叠（纯展示 + 3D 层叠 + 拖拽切换，点击进详情） -->
+    <!-- 核心卡片堆叠（纯展示 + 真 3D 层叠 + 拖拽/箭头切换） -->
     <div v-if="stack.length" class="stack-wrap">
       <div
         v-for="(c, i) in stack" :key="c.title" class="glass card stack-card"
         :data-idx="i" :style="cardStyle(i)"
-        @pointerdown="onPointerDown" @click="onCardClick(i, c)">
+        @pointerdown="onPointerDown">
         <div class="row between">
           <span class="row" style="gap:8px">
             <span class="avatar" style="width:34px;height:34px;background:var(--eo-chip)" :style="'color:' + TINT[c.tint]"><Icon :name="c.icon" :size="18" /></span>
@@ -216,18 +273,17 @@ function onCardClick(i, c) {
         <div v-if="c.bar != null" class="bar" style="margin:8px 0 4px"><i :style="{ width: (c.bar * 100) + '%' }"></i></div>
         <div class="muted" style="font-size:12px;margin-top:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.sub }}</div>
       </div>
-      <!-- 左右箭头暗示切换 -->
-      <div class="row" style="justify-content:center;gap:14px;margin-top:12px">
+      <!-- 左右箭头切换（已删除底部圆点指示器） -->
+      <div class="row" style="justify-content:center;gap:18px;margin-top:16px">
         <button class="stack-arrow" @click="stackShift(-1)" aria-label="上一张"><Icon name="chevron" :size="15" style="transform:rotate(180deg)" /></button>
-        <span v-for="(c, i) in stack" :key="'d' + i" class="stack-dot" :style="i === stackIdx ? 'background:var(--eo-primary);width:16px' : ''"></span>
         <button class="stack-arrow" @click="stackShift(1)" aria-label="下一张"><Icon name="chevron" :size="15" /></button>
       </div>
     </div>
 
-    <!-- 速览 = 快捷操作区（一键直达 + 自动弹开操作窗） -->
+    <!-- 速览 = 快捷操作区（主页内弹悬浮对话框，不跳转） -->
     <div class="section-title">速览 · 快捷操作</div>
     <div class="qa-grid">
-      <button v-for="a in quickActions" :key="a.label" class="glass card qa-item" @click="go(a.to)">
+      <button v-for="a in quickActions" :key="a.key" class="glass card qa-item" @click="openQuick(a.key)">
         <span class="qa-icon" :style="'background:' + a.bg + ';color:' + a.tint"><Icon :name="a.icon" :size="19" /></span>
         <span style="font-weight:600;font-size:12px;color:var(--eo-ink)">{{ a.label }}</span>
       </button>
@@ -257,70 +313,129 @@ function onCardClick(i, c) {
       </button>
     </div>
 
-    <!-- 电脑端三栏：日历 / 时间轴 / 最近动态 -->
+    <!-- 电脑端两栏：左 2/3 日历·任务 / 右 1/3 时间轴+最近动态 -->
     <div class="home-lower">
-    <div>
-    <div class="section-title">日历 · 任务</div>
-    <div class="glass card">
-      <div class="row between" style="margin-bottom:8px">
-        <button class="btn ghost" style="padding:6px 12px" @click="calShift(-1)"><Icon name="chevron" :size="16" style="transform:rotate(180deg)" /></button>
-        <span style="font-weight:700">{{ calTitle }}</span>
-        <button class="btn ghost" style="padding:6px 12px" @click="calShift(1)"><Icon name="chevron" :size="16" /></button>
-      </div>
-      <div class="cal-week">
-        <span v-for="w in WEEK" :key="w" class="muted">{{ w }}</span>
-      </div>
-      <div class="cal-grid">
-        <button v-for="c in calCells" :key="c.key" class="cal-cell"
-          :class="{ out: !c.inMonth, today: c.isToday, sel: c.key === selDay }" @click="pickDay(c)">
-          {{ c.day }}
-          <i v-if="c.due" class="cal-dot"></i>
-        </button>
-      </div>
-      <div class="row between" style="margin-top:10px">
-        <span class="muted" style="font-size:13px">{{ selDay === todayKey ? '今日待办' : selDay + ' 截止' }}</span>
-        <span class="chip" v-if="selTasks.length">{{ selTasks.length }} 项</span>
-      </div>
-      <div v-if="selTasks.length">
-        <div v-for="t in selTasks" :key="t.id" class="row" style="padding:7px 0;border-top:1px solid var(--eo-glass-border)">
-          <Icon name="checklist" :size="16" />
-          <span style="font-size:14px;flex:1" :style="t.status === 'done' ? 'text-decoration:line-through;opacity:.6' : ''">{{ t.title }}</span>
-          <span class="chip">{{ statusLabelOf(t.status) }}</span>
+      <div class="home-left">
+        <div class="section-title">日历 · 任务</div>
+        <div class="glass card">
+          <div class="row between" style="margin-bottom:8px">
+            <button class="btn ghost" style="padding:6px 12px" @click="calShift(-1)"><Icon name="chevron" :size="16" style="transform:rotate(180deg)" /></button>
+            <span style="font-weight:700">{{ calTitle }}</span>
+            <button class="btn ghost" style="padding:6px 12px" @click="calShift(1)"><Icon name="chevron" :size="16" /></button>
+          </div>
+          <div class="cal-week">
+            <span v-for="w in WEEK" :key="w" class="muted">{{ w }}</span>
+          </div>
+          <div class="cal-grid">
+            <button v-for="c in calCells" :key="c.key" class="cal-cell"
+              :class="{ out: !c.inMonth, today: c.isToday, sel: c.key === selDay }" @click="pickDay(c)">
+              {{ c.day }}
+              <i v-if="c.due" class="cal-dot"></i>
+            </button>
+          </div>
+          <div class="row between" style="margin-top:10px">
+            <span class="muted" style="font-size:13px">{{ selDay === todayKey ? '今日待办' : selDay + ' 截止' }}</span>
+            <span class="chip" v-if="selTasks.length">{{ selTasks.length }} 项</span>
+          </div>
+          <div v-if="selTasks.length">
+            <div v-for="t in selTasks" :key="t.id" class="row" style="padding:7px 0;border-top:1px solid var(--eo-glass-border)">
+              <Icon name="checklist" :size="16" />
+              <span style="font-size:14px;flex:1" :style="t.status === 'done' ? 'text-decoration:line-through;opacity:.6' : ''">{{ t.title }}</span>
+              <span class="chip">{{ statusLabelOf(t.status) }}</span>
+            </div>
+            <button class="btn ghost" style="width:100%;margin-top:8px" @click="openQuick('task')"><Icon name="plus" :size="16" /> 新建任务</button>
+          </div>
+          <div v-else class="muted" style="font-size:13px;padding:8px 0">该日暂无截止任务，点击日历日期查看其他天。</div>
         </div>
-        <button class="btn ghost" style="width:100%;margin-top:8px" @click="go('/tasks?add=1')"><Icon name="plus" :size="16" /> 新建任务</button>
       </div>
-      <div v-else class="muted" style="font-size:13px;padding:8px 0">该日暂无截止任务，点击日历日期查看其他天。</div>
-    </div>
+
+      <div class="home-right">
+        <div class="section-title">人生时间轴</div>
+        <div class="glass card">
+          <div v-if="!timeline.length" class="muted" style="font-size:14px">还没有记录，去添加第一篇笔记或足迹吧。</div>
+          <div v-for="(t, i) in timeline" :key="i" class="row" style="padding:8px 0;border-bottom:1px solid var(--eo-glass-border)" :style="i === timeline.length - 1 ? 'border:none' : ''">
+            <span class="avatar" style="width:34px;height:34px"><Icon :name="t.icon" :size="18" /></span>
+            <div style="flex:1">
+              <div style="font-size:14px">{{ t.text }}</div>
+              <div class="muted" style="font-size:12px">{{ t.date }}</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="section-title">最近动态</div>
+        <div class="glass card">
+          <div v-if="!recent.length" class="muted" style="font-size:14px">暂无动态。</div>
+          <transition-group name="fade">
+            <div v-for="(a, i) in recent" :key="a.id" class="row" style="padding:7px 0">
+              <Icon :name="a.icon" :size="18" />
+              <span style="font-size:14px;flex:1">{{ a.text }}</span>
+              <span class="muted" style="font-size:12px">{{ a.time }}</span>
+            </div>
+          </transition-group>
+        </div>
+      </div>
     </div>
 
-    <div>
-    <div class="section-title">人生时间轴</div>
-    <div class="glass card">
-      <div v-if="!timeline.length" class="muted" style="font-size:14px">还没有记录，去添加第一篇笔记或足迹吧。</div>
-      <div v-for="(t, i) in timeline" :key="i" class="row" style="padding:8px 0;border-bottom:1px solid var(--eo-glass-border)" :style="i === timeline.length - 1 ? 'border:none' : ''">
-        <span class="avatar" style="width:34px;height:34px"><Icon :name="t.icon" :size="18" /></span>
-        <div style="flex:1">
-          <div style="font-size:14px">{{ t.text }}</div>
-          <div class="muted" style="font-size:12px">{{ t.date }}</div>
+    <!-- 速览快捷操作弹窗（主页内悬浮，不跳转） -->
+    <Modal :title="qTitle" :show="qOpen" @close="closeQuick">
+      <!-- 写笔记 -->
+      <template v-if="qKey === 'note'">
+        <div class="field"><label>标题</label><input v-model="noteForm.title" placeholder="标题" /></div>
+        <div class="field"><label>标签（空格或逗号分隔）</label><input v-model="noteForm.tags" placeholder="如：复盘 灵感" /></div>
+        <div class="field"><label>内容（支持 Markdown）</label><textarea v-model="noteForm.markdown" placeholder="写点什么…" style="min-height:90px"></textarea></div>
+        <button class="btn" style="width:100%" @click="saveNote"><Icon name="edit" :size="16" /> 保存笔记</button>
+      </template>
+      <!-- 记一笔 -->
+      <template v-else-if="qKey === 'ledger'">
+        <div class="capsule" style="display:inline-flex;padding:4px;gap:4px;margin-bottom:12px">
+          <button class="btn ghost" :style="ledForm.type === 'expense' ? 'background:var(--eo-primary);color:#fff;padding:6px 16px' : 'padding:6px 16px'" @click="ledForm.type = 'expense'">支出</button>
+          <button class="btn ghost" :style="ledForm.type === 'income' ? 'background:var(--eo-primary);color:#fff;padding:6px 16px' : 'padding:6px 16px'" @click="ledForm.type = 'income'">收入</button>
         </div>
-      </div>
-    </div>
-    </div>
-
-    <div>
-    <div class="section-title">最近动态</div>
-    <div class="glass card">
-      <div v-if="!recent.length" class="muted" style="font-size:14px">暂无动态。</div>
-      <transition-group name="fade">
-        <div v-for="(a, i) in recent" :key="a.id" class="row" style="padding:7px 0">
-          <Icon :name="a.icon" :size="18" />
-          <span style="font-size:14px;flex:1">{{ a.text }}</span>
-          <span class="muted" style="font-size:12px">{{ a.time }}</span>
+        <div class="field"><label>金额</label><input type="number" min="0" step="0.01" v-model="ledForm.amount" placeholder="0.00" /></div>
+        <div class="field"><label>分类</label><input v-model="ledForm.category" placeholder="如：餐饮" /></div>
+        <div class="field"><label>日期</label><input type="date" v-model="ledForm.date" /></div>
+        <div class="field"><label>备注</label><input v-model="ledForm.note" placeholder="可选" /></div>
+        <button class="btn" style="width:100%" @click="saveLed"><Icon name="wallet" :size="16" /> 保存</button>
+      </template>
+      <!-- 新任务 -->
+      <template v-else-if="qKey === 'task'">
+        <div class="field"><label>标题</label><input v-model="taskForm.title" placeholder="要做点什么？" /></div>
+        <div class="field"><label>类型</label>
+          <select v-model="taskForm.category">
+            <option value="side">日常</option>
+            <option value="todo">Todo</option>
+          </select>
         </div>
-      </transition-group>
-    </div>
-    </div>
-    </div>
+        <div class="field"><label>截止日期与时间</label><input type="datetime-local" v-model="taskDueLocal" /></div>
+        <div class="field"><label>备注</label><textarea v-model="taskForm.note" placeholder="补充说明" style="min-height:60px"></textarea></div>
+        <button class="btn" style="width:100%" @click="saveTask"><Icon name="checklist" :size="16" /> 创建</button>
+      </template>
+      <!-- 传照片 -->
+      <template v-else-if="qKey === 'album'">
+        <div class="field"><label>选择图片</label><GlassUploader @file="pickPhoto" /></div>
+        <div v-if="photoForm.dataUrl" style="height:120px;border-radius:12px;background-size:cover;background-position:center;margin-bottom:10px" :style="{ backgroundImage: 'url(' + photoForm.dataUrl + ')' }"></div>
+        <div class="field"><label>名称</label><input v-model="photoForm.name" /></div>
+        <div class="field"><label>标签（空格或逗号分隔）</label><input v-model="photoForm.tags" placeholder="如：旅行 美食" /></div>
+        <button class="btn" style="width:100%" :disabled="!photoForm.dataUrl" @click="savePhoto"><Icon name="plus" :size="16" /> 存入</button>
+      </template>
+      <!-- 留足迹 / 看数据：需对应页面，弹窗内给引导 CTA -->
+      <template v-else-if="qKey === 'map'">
+        <div class="empty-state" style="padding:8px 4px">
+          <span class="empty-illu"><Icon name="map-pin" :size="32" /></span>
+          <div class="es-title">在地图上留下足迹</div>
+          <div class="es-sub">足迹需要地图选点，前往足迹页搜索或点选位置即可添加。</div>
+          <button class="btn" @click="goMap"><Icon name="map-pin" :size="16" /> 前往足迹页</button>
+        </div>
+      </template>
+      <template v-else-if="qKey === 'stats'">
+        <div class="empty-state" style="padding:8px 4px">
+          <span class="empty-illu"><Icon name="chart" :size="32" /></span>
+          <div class="es-title">查看完整数据报表</div>
+          <div class="es-sub">等级、活跃度、周期报告等都在数据中心。</div>
+          <button class="btn" @click="goStats"><Icon name="chart" :size="16" /> 前往数据中心</button>
+        </div>
+      </template>
+    </Modal>
   </div>
 </template>
 
@@ -342,7 +457,7 @@ function onCardClick(i, c) {
 }
 .cal-cell.sel .cal-dot { background: #fff; }
 
-/* 卡片堆叠：CSS 3D 景深层叠（后方卡片露出上缘）+ 拖拽 */
+/* 卡片堆叠：真 3D 景深层叠（后方卡片向下露边）+ 拖拽 */
 .stack-wrap { margin: 0 0 4px; position: relative; perspective: 1100px; }
 .stack-card {
   transition: transform .35s cubic-bezier(.22,1,.36,1), opacity .35s ease, box-shadow .35s ease;
@@ -350,12 +465,11 @@ function onCardClick(i, c) {
 }
 .stack-card:active { cursor: grabbing; }
 .stack-arrow {
-  width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
   background: var(--eo-chip); color: var(--eo-primary-deep);
   transition: transform .2s cubic-bezier(.22,1,.36,1), background .2s ease;
 }
 .stack-arrow:hover { transform: scale(1.08); background: rgba(212, 163, 115, 0.3); }
-.stack-dot { width: 5px; height: 5px; border-radius: 99px; background: var(--eo-glass-border); display: inline-block; transition: all .3s ease; }
 
 /* 快捷操作：紧凑瓷砖 */
 .qa-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }

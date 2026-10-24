@@ -67,7 +67,12 @@ function del(id) {
       <button class="ghost-btn" @click.stop="del(m.id)"><Icon name="trash" :size="16" /></button>
     </div>
     </div>
-    <div v-if="!notes.length" class="muted" style="text-align:center;padding:30px">还没有笔记</div>
+    <div v-if="!notes.length" class="glass card empty-state">
+      <span class="empty-illu"><Icon name="note" :size="32" /></span>
+      <div class="es-title">还没有笔记</div>
+      <div class="es-sub">把灵感、复盘、摘抄记下来，人生会更有迹可循。</div>
+      <button class="btn" @click="openNew"><Icon name="plus" :size="16" /> 写第一篇笔记</button>
+    </div>
 
     <button class="btn notes-fab" @click="openNew">
       <Icon name="plus" :size="18" /> 写笔记

@@ -97,9 +97,9 @@ const totalTime = computed(() => games.value.reduce((s, g) => s + (g.playtimeHou
         </div>
 
         <div v-else-if="!loading && !error" class="st-empty">
-          <div style="font-size:34px">🎮</div>
-          <div style="font-weight:700;margin-top:8px">{{ pulled ? '这个账号还没有公开游戏' : '游戏库将展示在这里' }}</div>
-          <div class="muted" style="font-size:13px;margin-top:4px;line-height:1.7">{{ pulled ? '检查 Steam 资料隐私设置后重试' : '在左侧填入 API Key 与 Steam ID，点击「拉取游戏库」即可同步你的游戏数据。' }}</div>
+          <span class="empty-illu"><Icon name="gamepad" :size="32" /></span>
+          <div class="es-title">{{ pulled ? '这个账号还没有公开游戏' : '游戏库将展示在这里' }}</div>
+          <div class="es-sub">{{ pulled ? '检查 Steam 资料隐私设置后重试' : '在左侧填入 API Key 与 Steam ID，点击「拉取游戏库」即可同步你的游戏数据。' }}</div>
         </div>
       </GlassCard>
     </div>

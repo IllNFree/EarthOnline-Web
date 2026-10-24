@@ -136,13 +136,13 @@ function onImport(e) {
   }
   r.readAsText(f)
 }
-async function davTest() { davBusy.value = true; const r = await testConnection(dav.value); davMsg.value = r.ok ? '✓ 连接成功' : '✗ ' + r.error; davBusy.value = false }
-async function davPush() { davBusy.value = true; const r = await pushBackup(dav.value, store.data); davMsg.value = r.ok ? '✓ 已上传' : '✗ ' + r.error; davBusy.value = false }
+async function davTest() { davBusy.value = true; const r = await testConnection(dav.value); davMsg.value = r.ok ? '连接成功' : '连接失败：' + r.error; davBusy.value = false }
+async function davPush() { davBusy.value = true; const r = await pushBackup(dav.value, store.data); davMsg.value = r.ok ? '已上传' : '上传失败：' + r.error; davBusy.value = false }
 async function davPull() {
   davBusy.value = true; const r = await pullBackup(dav.value)
   davBusy.value = false
-  if (r.ok && r.state) { Object.assign(store.data, r.state); store.persist(); store.recomputeXp(); davMsg.value = '✓ 已拉取'; store.showToast('已从 WebDAV 还原') }
-  else davMsg.value = '✗ ' + r.error
+  if (r.ok && r.state) { Object.assign(store.data, r.state); store.persist(); store.recomputeXp(); davMsg.value = '已拉取'; store.showToast('已从 WebDAV 还原') }
+  else davMsg.value = '拉取失败：' + r.error
 }
 async function hardReset() {
   const ok = await dialog.confirm({
@@ -285,8 +285,9 @@ async function hardReset() {
     </Modal>
 
     <!-- 赞助开发者弹窗 -->
-    <Modal title="赞助开发者 ☕" :show="showSponsor" @close="showSponsor = false">
+    <Modal title="赞助开发者" :show="showSponsor" @close="showSponsor = false">
       <div style="text-align:center">
+        <span class="empty-illu" style="margin:0 auto 10px"><Icon name="coffee" :size="32" /></span>
         <img src="/icons/sponsor-qr.webp" alt="赞助二维码" class="sponsor-qr-lg" />
         <div style="font-weight:700;margin-top:10px">如果这个项目帮到了你，欢迎请开发者喝一杯</div>
       </div>

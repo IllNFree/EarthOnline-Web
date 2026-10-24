@@ -135,11 +135,11 @@ function batchExport() {
           </div>
         </div>
       </template>
-      <div v-if="!store.data.tasks.some((t) => t.category !== 'todo')" class="glass card" style="text-align:center;padding:30px 16px">
-        <div style="font-size:30px">🌱</div>
-        <div style="font-weight:700;margin-top:6px">还没有日常任务</div>
-        <div class="muted" style="font-size:13px;margin-top:2px">从一个目标开始，人生游戏正式开局</div>
-        <button class="btn" style="margin:12px auto 0" @click="openEditor(null, null)"><Icon name="plus" :size="16" /> 添加你的第一个任务</button>
+      <div v-if="!store.data.tasks.some((t) => t.category !== 'todo')" class="glass card empty-state">
+        <span class="empty-illu"><Icon name="sprout" :size="32" /></span>
+        <div class="es-title">还没有日常任务</div>
+        <div class="es-sub">从一个目标开始，人生游戏正式开局。</div>
+        <button class="btn" @click="openEditor(null, null)"><Icon name="plus" :size="16" /> 添加你的第一个任务</button>
       </div>
     </div>
 

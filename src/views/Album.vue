@@ -93,12 +93,19 @@ async function delLightbox() {
            @click="batchMode ? toggleSelect(p.id) : lightbox = p">
         <img :src="p.dataUrl" style="width:100%;height:110px;object-fit:cover;display:block" />
         <div v-if="batchMode" style="position:absolute;top:6px;left:6px">
-          <span class="chip" :style="selected.has(p.id) ? 'background:var(--eo-primary);color:#fff' : ''">{{ selected.has(p.id) ? '✓' : '' }}</span>
+          <span class="chip" :style="selected.has(p.id) ? 'background:var(--eo-primary);color:#fff' : 'background:transparent;border:1px solid var(--eo-glass-border)'">
+            <Icon v-if="selected.has(p.id)" name="check" :size="14" />
+          </span>
         </div>
         <div v-if="p.name" style="font-size:11px;padding:4px 6px;color:var(--eo-ink-soft)">{{ p.name }}</div>
       </div>
     </div>
-    <div v-if="!photos.length" class="muted" style="text-align:center;padding:30px">还没有照片，点下方添加</div>
+    <div v-if="!photos.length" class="glass card empty-state">
+      <span class="empty-illu"><Icon name="album" :size="32" /></span>
+      <div class="es-title">还没有照片</div>
+      <div class="es-sub">上传一张照片，把值得记住的瞬间存进相册。</div>
+      <button class="btn" @click="showAdd = true"><Icon name="plus" :size="16" /> 添加照片</button>
+    </div>
 
     <div v-if="batchMode" class="row" style="gap:8px;margin-top:14px">
       <button class="btn danger" @click="batchDelete"><Icon name="trash" :size="16" /> 删除</button>

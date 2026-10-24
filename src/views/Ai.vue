@@ -13,7 +13,7 @@ const typing = ref(false)
 const showConfig = ref(false)
 const cfg = ref({ baseUrl: store.data.aiConfig.baseUrl, apiKey: store.data.aiConfig.apiKey, model: store.data.aiConfig.model })
 const testing = ref(false)
-const testRes = ref('')
+const testRes = ref(null)
 const scrollRef = ref(null)
 
 const configured = computed(() => store.data.aiConfig.apiKey && store.data.aiConfig.model)
@@ -30,7 +30,7 @@ function saveConfig() {
 async function doTest() {
   testing.value = true; testRes.value = ''
   const r = await testConnection({ ...cfg.value })
-  testRes.value = r.ok ? '✓ 连接成功' : '✗ ' + r.error
+  testRes.value = r.ok ? { ok: true, msg: '连接成功' } : { ok: false, msg: r.error }
   testing.value = false
 }
 async function send() {
@@ -61,13 +61,13 @@ async function quick() {
   if (!text) return
   if (!configured.value) { showConfig.value = true; return }
   input.value = ''
-  store.pushAi('user', '⚡ ' + text)
+  store.pushAi('user', text)
   typing.value = true
   const r = await decodeQuickIntent(store.data.aiConfig, text)
   typing.value = false
   if (!r.ok) { store.pushAi('assistant', '（识别失败：' + r.error + '）'); return }
   const res = applyIntent(store.data, r.intent)
-  store.pushAi('assistant', res.ok ? ('✅ ' + res.label) : ('⚠️ ' + (res.error || '未能执行')))
+  store.pushAi('assistant', res.ok ? res.label : ('未能执行：' + (res.error || '请稍后再试')))
   if (res.ok) store.showToast(res.label)
 }
 </script>
@@ -82,7 +82,7 @@ async function quick() {
     <div ref="scrollRef" style="flex:1;overflow-y:auto;padding:6px 16px 12px">
       <div v-if="!messages.length" class="muted" style="text-align:center;padding:30px">
         云端 AI 助手（Web 端仅支持云端模型）<br />
-        普通提问直接发送；打开 <b>⚡ 快捷</b> 后说一句话即可创建任务 / 笔记 / 足迹
+        普通提问直接发送；打开<b>快捷</b>模式后说一句话即可创建任务 / 笔记 / 足迹
       </div>
       <div v-for="m in messages" :key="m.id" class="row" :style="m.role === 'user' ? 'flex-direction:row-reverse' : ''" style="margin:8px 0">
         <span class="avatar" style="width:34px;height:34px;background:var(--eo-chip);color:var(--eo-primary-deep)">
@@ -115,7 +115,10 @@ async function quick() {
         <button class="btn ghost" @click="doTest" :disabled="testing"><Icon name="bolt" :size="16" /> {{ testing ? '测试中' : '测试连接' }}</button>
         <button class="btn" @click="saveConfig"><Icon name="checklist" :size="16" /> 保存</button>
       </div>
-      <div v-if="testRes" class="muted" style="margin-top:8px">{{ testRes }}</div>
+      <div v-if="testRes" class="row" style="gap:6px;margin-top:8px;justify-content:center;color:var(--eo-ink-soft)">
+        <Icon :name="testRes.ok ? 'check' : 'x'" :size="16" :style="testRes.ok ? 'color:var(--eo-good)' : 'color:var(--eo-bad)'" />
+        <span>{{ testRes.ok ? '连接成功' : testRes.msg }}</span>
+      </div>
     </Modal>
   </div>
 </template>

@@ -123,11 +123,11 @@ async function removeLoc(id) {
 
     <div style="padding:12px 16px 28px">
       <div class="section-title" style="margin-top:0">我的足迹（{{ store.data.locations.length }}）</div>
-      <div v-if="!store.data.locations.length" class="glass card" style="text-align:center;padding:28px 16px">
-        <div style="font-size:30px">🗺️</div>
-        <div style="font-weight:700;margin-top:6px">还没有足迹</div>
-        <div class="muted" style="font-size:13px;margin-top:2px;line-height:1.7">在上方搜索一个地点并点击结果，<br />或直接在地图上点选位置，即可留下第一枚足迹。</div>
-        <button class="btn" style="margin:12px auto 0" @click="searchInput && searchInput.focus()"><Icon name="search" :size="16" /> 搜索一个地点</button>
+      <div v-if="!store.data.locations.length" class="glass card empty-state">
+        <span class="empty-illu"><Icon name="globe" :size="32" /></span>
+        <div class="es-title">还没有足迹</div>
+        <div class="es-sub">在上方搜索一个地点并点击结果，或直接在地图上点选位置，即可留下第一枚足迹。</div>
+        <button class="btn" @click="searchInput && searchInput.focus()"><Icon name="search" :size="16" /> 搜索一个地点</button>
       </div>
       <div v-for="l in store.data.locations" :key="l.id" class="glass list-item">
         <span class="avatar"><Icon name="location" :size="20" /></span>
