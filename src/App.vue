@@ -1,11 +1,10 @@
 <script setup>
 import { computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { motion, AnimatePresence } from 'motion-v'
+import { motion } from 'motion-v'
 import { useMediaQuery } from '@vueuse/core'
 import { useAppStore } from './stores/app.js'
 import { useDialogStore } from './stores/dialog.js'
-import { routeVariants } from './lib/motion.js'
 import { xpLevelInfo } from './lib/model.js'
 import Icon from './components/Icon.vue'
 import GlassDialog from './components/GlassDialog.vue'
@@ -171,14 +170,12 @@ onUnmounted(() => {
     </div>
   </div>
 
-  <!-- 弹簧页面转场：blur + y + scale -->
-  <AnimatePresence mode="wait">
-    <motion.div :key="route.path" class="route-wrap" :variants="routeVariants" :initial="'initial'" :animate="'animate'" :exit="'exit'">
-      <router-view v-slot="{ Component }">
-        <component :is="Component" />
-      </router-view>
-    </motion.div>
-  </AnimatePresence>
+  <!-- 页面切换：纯 CSS 淡入（不依赖 motion-v，避免动画未启动时页面停在透明态导致「空白页」） -->
+  <div :key="route.path" class="route-wrap page-enter">
+    <router-view v-slot="{ Component }">
+      <component :is="Component" />
+    </router-view>
+  </div>
 
   <!-- AI 快捷中枢悬浮入口（手机 PWA 模式专属） -->
   <motion.button v-if="!isDesktop" class="ai-fab" :while-hover="{ y: -1, scale: 1.02 }" :while-press="{ scale: 0.94 }" :transition="{ type: 'spring', stiffness: 420, damping: 24 }" @click="$router.push('/ai')" aria-label="AI 中枢">
@@ -217,6 +214,10 @@ onUnmounted(() => {
 .ghost-btn:active { opacity: .6; }
 
 .route-wrap { position: absolute; inset: 0; z-index: 1; }
+/* 页面进入动画：纯 CSS， guaranteed 可见（从轻微下移+透明淡入） */
+.page-enter { animation: pageIn .3s cubic-bezier(.22, 1, .36, 1) both; }
+@keyframes pageIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .page-enter { animation: none; } }
 
 .side-user {
   display: flex; align-items: center; gap: 11px; width: 100%;

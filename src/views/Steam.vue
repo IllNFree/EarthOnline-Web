@@ -45,24 +45,24 @@ const totalTime = computed(() => games.value.reduce((s, g) => s + (g.playtimeHou
           <Icon name="shield" :size="14" />
           <span>Web 端仅支持云端数据。Steam Web API 默认不开放浏览器跨域(CORS)，如拉取失败请填写可信的 CORS 代理前缀。</span>
         </div>
-        <!-- Grid 表单：左列标签固定宽度，右列输入框自适应；窄屏自动上下堆叠 -->
+        <!-- 纵向 Flex 表单：标签在上、输入框独占整行，长文本永远完整换行 -->
         <div class="st-form">
-          <label class="st-label" for="st-key">API Key</label>
-          <div class="st-ctrl">
+          <div class="st-field">
+            <label class="st-label" for="st-key">Steam API Key</label>
             <input id="st-key" v-model="cfg.apiKey" type="password" placeholder="从 steamcommunity.com/dev/apikey 申请" autocomplete="off" />
             <div class="st-sub">密钥仅存本机，不会上传到任何服务器</div>
           </div>
 
-          <label class="st-label" for="st-id">Steam ID</label>
-          <div class="st-ctrl">
-            <input id="st-id" v-model="cfg.steamId" inputmode="numeric" placeholder="17 位数字，如 7656119xxxxxxxxxx" autocomplete="off" />
-            <div class="st-sub">可在个人资料页 URL 中找到</div>
+          <div class="st-field">
+            <label class="st-label" for="st-id">Steam ID（17 位数字）</label>
+            <input id="st-id" v-model="cfg.steamId" inputmode="numeric" placeholder="如 7656119xxxxxxxxxx" autocomplete="off" />
+            <div class="st-sub">可在 Steam 个人资料页的网址中找到</div>
           </div>
 
-          <label class="st-label" for="st-proxy">CORS 代理</label>
-          <div class="st-ctrl">
+          <div class="st-field">
+            <label class="st-label" for="st-proxy">CORS 代理前缀（可选）</label>
             <input id="st-proxy" v-model="cfg.proxy" placeholder="留空直连；跨域失败时填写" autocomplete="off" />
-            <div class="st-sub">可选。示例：https://corsproxy.io/?url=</div>
+            <div class="st-sub">示例：https://corsproxy.io/?url=</div>
           </div>
         </div>
         <button class="btn" style="width:100%;margin-top:14px" :disabled="loading" @click="load">
@@ -108,8 +108,8 @@ const totalTime = computed(() => games.value.reduce((s, g) => s + (g.playtimeHou
 
 <style scoped>
 /* 双栏：左配置右展示；窄屏自动上下堆叠 */
-.st-layout { display: grid; grid-template-columns: 480px 1fr; gap: 14px; align-items: start; margin-top: 6px; }
-@media (max-width: 980px) { .st-layout { grid-template-columns: 1fr; } }
+.st-layout { display: grid; grid-template-columns: 520px 1fr; gap: 14px; align-items: start; margin-top: 6px; }
+@media (max-width: 1020px) { .st-layout { grid-template-columns: 1fr; } }
 
 .st-hint {
   display: flex; align-items: flex-start; gap: 8px;
@@ -120,18 +120,12 @@ const totalTime = computed(() => games.value.reduce((s, g) => s + (g.playtimeHou
 }
 .st-hint svg { flex: none; margin-top: 3px; }
 
-.st-form { display: grid; grid-template-columns: auto 1fr; gap: 16px 18px; align-items: start; }
-.st-label {
-  font-size: 13px; font-weight: 600; color: var(--eo-ink);
-  padding-top: 11px; white-space: nowrap; min-width: 96px;
-}
-.st-ctrl { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
-.st-ctrl input { width: 100%; min-width: 0; padding: 10px 12px; }
-.st-sub { font-size: 11px; color: var(--eo-ink-soft); line-height: 1.6; overflow-wrap: anywhere; }
-@media (max-width: 560px) {
-  .st-form { grid-template-columns: 1fr; gap: 4px; }
-  .st-label { padding-top: 8px; white-space: normal; }
-}
+/* 纵向 Flex 表单：每个字段 = 标签 + 输入框 + 说明（全宽，无左右分栏，永不错位） */
+.st-form { display: flex; flex-direction: column; gap: 15px; }
+.st-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.st-label { font-size: 13px; font-weight: 700; color: var(--eo-ink); line-height: 1.5; }
+.st-field input { width: 100%; min-width: 0; padding: 10px 12px; }
+.st-sub { font-size: 11.5px; color: var(--eo-ink-soft); line-height: 1.65; overflow-wrap: anywhere; word-break: break-word; }
 
 .st-right { min-height: 320px; }
 .st-error {

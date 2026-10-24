@@ -97,8 +97,8 @@ export function defaultState() {
     aiConfig: { baseUrl: '', apiKey: '', model: '' },
     steam: { apiKey: '', steamId: '', proxy: '' },
     wallpaper: '',
-    wallAlpha: 0.5,
-    cardAlpha: 0.62,
+    wallAlpha: 1,
+    cardAlpha: 1,
     ledger: { records: [], expenseCategories: [], incomeCategories: [] },
     eggs: sanitizeEggs(null)
   }
@@ -345,8 +345,8 @@ export function sanitizeState(raw) {
       ? { apiKey: str(raw.steam.apiKey, 500), steamId: str(raw.steam.steamId, 60), proxy: str(raw.steam.proxy, 500) }
       : { apiKey: '', steamId: '', proxy: '' },
     wallpaper: str(raw.wallpaper, 3000000),
-    wallAlpha: clamp01(raw.wallAlpha, 0.5),
-    cardAlpha: clamp01(raw.cardAlpha, 0.62),
+    wallAlpha: clamp01(raw.wallAlpha, 1),
+    cardAlpha: clamp01(raw.cardAlpha, 1),
     ledger: sanitizeLedger(raw.ledger),
     eggs: sanitizeEggs(raw.eggs)
   }

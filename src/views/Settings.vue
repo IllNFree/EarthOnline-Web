@@ -76,8 +76,8 @@ function onWallFile(f) {
 }
 function clearWall() { store.setWallpaper(''); store.showToast('已恢复默认背景') }
 // 滑块用 0~100 整数百分比，落库存 0~1（数据层 clamp01）
-const wallPct = ref(Math.round((Number(store.data.wallAlpha) || 0.5) * 100))
-const cardPct = ref(Math.round((Number(store.data.cardAlpha) || 0.62) * 100))
+const wallPct = ref(Math.round((Number(store.data.wallAlpha) ?? 1) * 100))
+const cardPct = ref(Math.round((Number(store.data.cardAlpha) ?? 1) * 100))
 function pushAppearance() {
   store.setAppearance({ wallAlpha: wallPct.value / 100, cardAlpha: cardPct.value / 100 })
   store.applyTheme()

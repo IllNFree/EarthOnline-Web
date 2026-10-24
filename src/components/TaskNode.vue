@@ -52,7 +52,9 @@ function addChild() { if (openEditor) openEditor(null, props.task.id) }
     <div class="glass list-item" @click="batch ? select() : null">
       <input v-if="batch" type="checkbox" :checked="selectedIds.has(task.id)" @click.stop="select()" />
       <button class="avatar" :class="task.status === 'done' ? 'status-done' : ''" @click.stop="toggle"
-              style="background:var(--eo-chip);color:var(--eo-primary-deep)">
+              :style="task.status === 'done'
+                ? 'background:linear-gradient(135deg,#B8C9BC,#8FA98F);color:#fff'
+                : 'background:linear-gradient(135deg,var(--eo-primary-soft),var(--eo-primary-deep));color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.35)'">
         <Icon :name="task.status === 'done' ? 'checklist' : 'flag'" :size="20" />
       </button>
       <div style="flex:1;min-width:0" @click="task.note ? (showNote = !showNote) : null">
