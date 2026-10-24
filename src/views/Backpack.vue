@@ -201,15 +201,15 @@ async function del(kind, id) {
       </button>
     </div>
 
-    <!-- Steam 入口（收藏页，点击跳转独立页） -->
-    <GlassCard v-if="sub === 'collection'" padding="14" hover glow style="margin-bottom:14px;cursor:pointer" @click="$router.push('/steam')">
-      <div class="row" style="gap:12px">
-        <span class="avatar" style="background:var(--eo-chip);color:var(--eo-primary-deep)"><Icon name="cloud" :size="22" /></span>
+    <!-- Steam 入口（收藏页，点击跳转独立页）：精简小卡，绝不挤占正常收藏列表展示 -->
+    <GlassCard v-if="sub === 'collection'" padding="9" hover glow style="margin-bottom:10px;cursor:pointer" @click="$router.push('/steam')">
+      <div class="row" style="gap:10px">
+        <span class="avatar" style="width:30px;height:30px;background:var(--eo-chip);color:var(--eo-primary-deep)"><Icon name="cloud" :size="16" /></span>
         <div style="flex:1;min-width:0">
-          <div style="font-weight:700">Steam 游戏库</div>
-          <div class="muted" style="font-size:12px">配置 API Key 后拉取云端游戏数据 · 点击进入</div>
+          <div style="font-weight:700;font-size:13px">Steam 游戏库</div>
+          <div class="muted" style="font-size:11px">配置后拉取云端游戏 · 点击进入</div>
         </div>
-        <Icon name="chevron" :size="18" />
+        <Icon name="chevron" :size="16" />
       </div>
     </GlassCard>
 

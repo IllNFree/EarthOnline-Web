@@ -175,9 +175,13 @@ function batchExport() {
                 </div>
               </td>
             </tr>
-            <tr v-if="!todoTasks.length"><td colspan="4" style="padding:20px;text-align:center">
-              <div class="muted">暂无 Todo</div>
-              <button class="btn" style="margin-top:10px" @click="openEditor(null, null)"><Icon name="plus" :size="16" /> 新建 Todo</button>
+            <tr v-if="!todoTasks.length"><td colspan="4" style="padding:8px">
+              <div class="glass card empty-state" style="margin:0">
+                <span class="empty-illu"><Icon name="checklist" :size="32" /></span>
+                <div class="es-title">还没有 Todo</div>
+                <div class="es-sub">轻松搞定琐碎小事，把脑子里的杂事都倒出来吧。</div>
+                <button class="btn" @click="openEditor(null, null)"><Icon name="plus" :size="16" /> 新建 Todo</button>
+              </div>
             </td></tr>
           </tbody>
         </table>

@@ -78,6 +78,22 @@ const donut = computed(() => {
     return seg
   })
 })
+// 近 12 个月收支趋势（柱状图，绿=收入 / 红=支出）
+const trend = computed(() => {
+  const arr = []
+  const now = new Date()
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    const key = d.getFullYear() + '-' + p2(d.getMonth() + 1)
+    let inc = 0, exp = 0
+    store.data.ledger.records.forEach((r) => {
+      if (r.date.startsWith(key)) { if (r.type === 'income') inc += r.amount; else exp += r.amount }
+    })
+    arr.push({ key, label: (d.getMonth() + 1) + '月', income: inc, expense: exp })
+  }
+  return arr
+})
+const trendMax = computed(() => Math.max(1, ...trend.value.map((m) => Math.max(m.income, m.expense))))
 const cats = computed(() => form.value.type === 'income' ? store.data.ledger.incomeCategories : store.data.ledger.expenseCategories)
 // 自定义分类：记一笔弹窗内直接添加
 const newCat = ref('')
@@ -209,26 +225,42 @@ const fmtDay = (d) => d.slice(5).replace('-', ' 月 ') + ' 日'
       </div>
     </div>
 
-    <!-- 分类占比（支出/收入环形图切换） -->
-    <div v-if="byCategory.length" class="glass card" style="padding:14px">
+    <!-- 分类占比（支出/收入环形图切换）+ 近 12 月收支趋势 -->
+    <div class="glass card" style="padding:14px">
       <div class="capsule" style="display:inline-flex;padding:3px;gap:3px;margin-bottom:10px">
         <button class="btn ghost" :style="byCategoryType === 'expense' ? 'background:var(--eo-primary);color:#fff;padding:4px 14px' : 'padding:4px 14px'" @click="byCategoryType = 'expense'">支出占比</button>
         <button class="btn ghost" :style="byCategoryType === 'income' ? 'background:var(--eo-primary);color:#fff;padding:4px 14px' : 'padding:4px 14px'" @click="byCategoryType = 'income'">收入占比</button>
       </div>
-      <div class="row" style="gap:18px;align-items:center">
-        <svg width="120" height="120" viewBox="0 0 120 120" style="flex:none">
-          <circle cx="60" cy="60" r="42" fill="none" stroke="var(--eo-glass-border)" stroke-width="14" />
-          <circle v-for="(s, i) in donut" :key="i" cx="60" cy="60" r="42" fill="none"
-            :stroke="s.color" stroke-width="14" :stroke-dasharray="s.dasharray" :stroke-dashoffset="s.dashoffset"
-            transform="rotate(-90 60 60)" />
-          <text x="60" y="58" text-anchor="middle" font-size="19" font-weight="800" fill="var(--eo-ink)">{{ byCategoryTotal.toFixed(0) }}</text>
-          <text x="60" y="74" text-anchor="middle" font-size="10" fill="var(--eo-ink-soft)">元</text>
-        </svg>
-        <div style="flex:1;min-width:0">
-          <div v-for="(c, i) in byCategory.slice(0, 8)" :key="c.name" class="row between" style="padding:3px 0;font-size:13px">
-            <span class="row" style="gap:8px"><i :style="{ width: '10px', height: '10px', borderRadius: '3px', background: catColor(i), display: 'inline-block' }"></i>{{ c.name }}</span>
-            <span class="muted">{{ c.v.toFixed(2) }} · {{ Math.round(c.v / (byCategoryTotal || 1) * 100) }}%</span>
+      <div class="led-charts">
+        <div class="led-donut">
+          <svg width="120" height="120" viewBox="0 0 120 120" style="flex:none">
+            <circle cx="60" cy="60" r="42" fill="none" stroke="var(--eo-glass-border)" stroke-width="14" />
+            <circle v-for="(s, i) in donut" :key="i" cx="60" cy="60" r="42" fill="none"
+              :stroke="s.color" stroke-width="14" :stroke-dasharray="s.dasharray" :stroke-dashoffset="s.dashoffset"
+              transform="rotate(-90 60 60)" />
+            <text x="60" y="58" text-anchor="middle" font-size="19" font-weight="800" fill="var(--eo-ink)">{{ byCategoryTotal.toFixed(0) }}</text>
+            <text x="60" y="74" text-anchor="middle" font-size="10" fill="var(--eo-ink-soft)">元</text>
+          </svg>
+          <div style="min-width:0">
+            <div v-for="(c, i) in byCategory.slice(0, 8)" :key="c.name" class="row between" style="padding:3px 0;font-size:13px">
+              <span class="row" style="gap:8px"><i :style="{ width: '10px', height: '10px', borderRadius: '3px', background: catColor(i), display: 'inline-block' }"></i>{{ c.name }}</span>
+              <span class="muted">{{ c.v.toFixed(2) }} · {{ Math.round(c.v / (byCategoryTotal || 1) * 100) }}%</span>
+            </div>
           </div>
+        </div>
+        <!-- 近 12 个月收支趋势：纯 CSS 柱状图（绿=收入 / 红=支出） -->
+        <div class="led-trend">
+          <div class="led-trend-cap">近 12 个月收支趋势</div>
+          <div class="trend">
+            <div v-for="m in trend" :key="m.key" class="trend-m">
+              <div class="trend-bars">
+                <span class="trend-bar inc" :style="{ height: Math.max(2, m.income / trendMax * 120) + 'px' }" :title="'收入 ' + m.income.toFixed(0) + ' 元'"></span>
+                <span class="trend-bar exp" :style="{ height: Math.max(2, m.expense / trendMax * 120) + 'px' }" :title="'支出 ' + m.expense.toFixed(0) + ' 元'"></span>
+              </div>
+              <div class="trend-lab">{{ m.label }}</div>
+            </div>
+          </div>
+          <div class="trend-legend"><span><i class="dot inc"></i>收入</span><span><i class="dot exp"></i>支出</span></div>
         </div>
       </div>
     </div>
@@ -304,6 +336,23 @@ const fmtDay = (d) => d.slice(5).replace('-', ' 月 ') + ' 日'
 
 <style scoped>
 .ghost-btn { color: var(--eo-ink-soft); padding: 6px; }
+/* 环形图 + 趋势图并排（窄屏堆叠） */
+.led-charts { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
+.led-donut { display: flex; align-items: center; gap: 18px; }
+.led-trend { flex: 1; min-width: 240px; }
+.led-trend-cap { font-size: 13px; font-weight: 700; color: var(--eo-ink-soft); margin-bottom: 8px; }
+.trend { display: flex; align-items: flex-end; gap: 6px; height: 140px; }
+.trend-m { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; }
+.trend-bars { display: flex; align-items: flex-end; gap: 3px; height: 120px; }
+.trend-bar { width: 7px; border-radius: 4px 4px 2px 2px; transition: height .3s cubic-bezier(.22,1,.36,1); }
+.trend-bar.inc { background: #34C759; }
+.trend-bar.exp { background: #FF3B30; }
+.trend-lab { font-size: 10px; color: var(--eo-ink-soft); }
+.trend-legend { display: flex; gap: 14px; justify-content: flex-end; font-size: 11px; color: var(--eo-ink-soft); margin-top: 6px; }
+.trend-legend .dot { display: inline-block; width: 8px; height: 8px; border-radius: 3px; margin-right: 4px; vertical-align: middle; }
+.trend-legend .dot.inc { background: #34C759; }
+.trend-legend .dot.exp { background: #FF3B30; }
+@media (max-width: 640px) { .led-charts { flex-direction: column; align-items: stretch; } .led-donut { justify-content: center; } }
 .led-summary { display: flex; justify-content: center; gap: 30px; text-align: center; padding: 4px 0; }
 .led-summary .led-sum-item { min-width: 78px; }
 .led-fab {

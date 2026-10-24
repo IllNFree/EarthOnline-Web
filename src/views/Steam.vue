@@ -124,7 +124,19 @@ const totalTime = computed(() => games.value.reduce((s, g) => s + (g.playtimeHou
 .st-form { display: flex; flex-direction: column; gap: 15px; }
 .st-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .st-label { font-size: 13px; font-weight: 700; color: var(--eo-ink); line-height: 1.5; }
-.st-field input { width: 100%; min-width: 0; padding: 10px 12px; }
+.st-field input {
+  width: 100%; min-width: 0; padding: 11px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--eo-glass-border);
+  background: var(--eo-glass-strong);
+  backdrop-filter: blur(16px) saturate(160%); -webkit-backdrop-filter: blur(16px) saturate(160%);
+  box-shadow: inset 0 1px 0 var(--eo-glass-hi), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  transition: border-color .2s ease, box-shadow .2s ease;
+}
+.st-field input:focus {
+  outline: none; border-color: var(--eo-primary);
+  box-shadow: inset 0 1px 0 var(--eo-glass-hi), 0 0 0 3px rgba(212, 163, 115, 0.22);
+}
 .st-sub { font-size: 11.5px; color: var(--eo-ink-soft); line-height: 1.65; overflow-wrap: anywhere; word-break: break-word; }
 
 .st-right { min-height: 320px; }

@@ -163,6 +163,29 @@ const timeline = computed(() => {
 function statusLabelOf(s) { return ({ planning: '规划中', active: '进行中', paused: '搁置', done: '已完成' })[s] || s }
 function achTitle(key) { return (achievementMeta(key) || {}).title || key }
 
+// ---- 主页两栏可拖拽调节（左 2/3 日历·任务 / 右 1/3 时间轴+动态） ----
+const homeSplit = ref(0.66)
+const homeLeftPct = computed(() => (homeSplit.value * 100).toFixed(2) + '%')
+const homeLowerRef = ref(null)
+let resizing = false
+function onResizeDown(e) {
+  resizing = true
+  window.addEventListener('pointermove', onResizeMove)
+  window.addEventListener('pointerup', onResizeUp)
+  e.preventDefault(); e.stopPropagation()
+}
+function onResizeMove(e) {
+  if (!resizing || !homeLowerRef.value) return
+  const rect = homeLowerRef.value.getBoundingClientRect()
+  let r = (e.clientX - rect.left) / rect.width
+  homeSplit.value = Math.max(0.42, Math.min(0.8, r))
+}
+function onResizeUp() {
+  resizing = false
+  window.removeEventListener('pointermove', onResizeMove)
+  window.removeEventListener('pointerup', onResizeUp)
+}
+
 // ---- 核心数据卡片堆叠：纯主展示（只看不操作）+ 真 3D 层叠（当前居中、后方露边、景深阴影） ----
 const stack = computed(() => {
   const cards = []
@@ -331,8 +354,9 @@ function onPointerUp(e) {
       </button>
     </div>
 
-    <!-- 电脑端两栏：左 2/3 日历·任务 / 右 1/3 时间轴+最近动态 -->
-    <div class="home-lower">
+    <!-- 电脑端两栏：左 2/3 日历·任务 / 右 1/3 时间轴+最近动态（可拖拽中间分隔条调节；同行动态等高，右栏限高滚动） -->
+    <div class="home-lower" ref="homeLowerRef" :style="{ gridTemplateColumns: homeSplit + 'fr ' + (1 - homeSplit) + 'fr' }">
+      <div class="home-resizer" :style="{ left: homeLeftPct }" @pointerdown="onResizeDown" title="拖拽调节左右宽度"></div>
       <div class="home-left">
         <div class="section-title">日历 · 任务</div>
         <div class="glass card">

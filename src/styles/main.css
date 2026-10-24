@@ -224,6 +224,8 @@ input, textarea, select { font-family: inherit; color: inherit; }
   overflow-y: auto; padding: 16px 16px 28px; -webkit-overflow-scrolling: touch;
 }
 .page.wide { max-width: 760px; margin: 0 auto; }
+/* 中间拖拽分隔条：默认隐藏（仅桌面两栏时由媒体查询显示） */
+.home-resizer { display: none; }
 .fade-enter-active, .fade-leave-active { transition: opacity .2s ease, transform .2s ease; }
 .fade-enter-from { opacity: 0; transform: translateY(8px); }
 
@@ -332,8 +334,23 @@ input, textarea, select { font-family: inherit; color: inherit; }
   .grid2 { grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
   .cols-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; align-items: start; }
   .cols-2 > .glass { margin-bottom: 0; }
-  .home-lower { display: grid; grid-template-columns: 2fr 1fr; gap: 14px; align-items: start; }
-  .home-right { display: flex; flex-direction: column; gap: 0; }
+  .home-lower { position: relative; display: grid; grid-template-columns: 2fr 1fr; gap: 14px; align-items: stretch; }
+  .home-right { display: flex; flex-direction: column; gap: 14px; min-height: 0; }
+  /* 右栏卡片与左栏等高：时间轴/动态数据过多时内部滚动，绝不无限撑高 */
+  .home-right > .glass { flex: 1 1 0; min-height: 140px; overflow-y: auto; }
+  /* 中间拖拽分隔条（仅桌面两栏时出现） */
+  .home-resizer {
+    position: absolute; top: 8px; bottom: 8px; width: 16px; transform: translateX(-50%);
+    cursor: col-resize; z-index: 6; display: block; border-radius: 999px;
+  }
+  .home-resizer::after {
+    content: ''; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    width: 4px; height: 44px; border-radius: 999px; background: var(--eo-glass-border);
+    transition: background .2s ease, box-shadow .2s ease;
+  }
+  .home-resizer:hover::after, .home-resizer:active::after {
+    background: var(--eo-primary); box-shadow: 0 0 14px rgba(212, 163, 115, .6);
+  }
 }
 
 /* ---- 通用 ---- */
