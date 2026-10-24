@@ -209,7 +209,10 @@ const fmtDay = (d) => d.slice(5).replace('-', ' 月 ') + ' 日'
         <Icon name="search" :size="16" />
         <input v-model="kw" placeholder="搜索分类 / 备注…" />
       </div>
-      <button class="add-btn" @click="catMgr = true"><Icon name="tag" :size="16" /> 分类管理</button>
+      <div class="row" style="gap:8px">
+        <button class="add-btn" @click="openAdd"><Icon name="plus" :size="16" /> 记一笔</button>
+        <button class="ghost-btn-soft" @click="catMgr = true"><Icon name="tag" :size="16" /> 分类管理</button>
+      </div>
     </div>
     <!-- 月度切换 + 概览 -->
     <div class="glass card">
@@ -288,9 +291,12 @@ const fmtDay = (d) => d.slice(5).replace('-', ' 月 ') + ' 日'
         <button class="ghost-btn" @click="del(r.id)"><Icon name="trash" :size="16" /></button>
       </div>
     </div>
-    <div v-if="!shownRecords.length" class="muted" style="text-align:center;padding:30px">本月暂无记录，点下方「记一笔」开始。</div>
-
-    <button class="led-fab" @click="openAdd"><Icon name="plus" :size="18" /> 记一笔</button>
+    <div v-if="!shownRecords.length" class="empty-state">
+      <span class="empty-illu"><Icon name="wallet" :size="32" /></span>
+      <div class="es-title">本月还没有账单</div>
+      <div class="es-sub">点右上角「记一笔」，记录第一笔收支</div>
+      <button class="btn" style="margin-top:6px" @click="openAdd"><Icon name="plus" :size="16" /> 记一笔</button>
+    </div>
 
     <Modal title="记一笔" :show="showAdd" @close="showAdd = false">
       <div class="capsule" style="padding:4px;gap:4px;margin-bottom:12px">
@@ -336,6 +342,13 @@ const fmtDay = (d) => d.slice(5).replace('-', ' 月 ') + ' 日'
 
 <style scoped>
 .ghost-btn { color: var(--eo-ink-soft); padding: 6px; }
+.ghost-btn-soft {
+  display: inline-flex; align-items: center; gap: 6px; padding: 9px 14px; border-radius: 999px; font-size: 14px; font-weight: 600;
+  color: var(--eo-primary-deep); background: var(--eo-glass); border: 1px solid var(--eo-glass-border);
+  backdrop-filter: blur(16px) saturate(165%); -webkit-backdrop-filter: blur(16px) saturate(165%);
+  box-shadow: inset 0 1px 0 var(--eo-glass-hi); transition: background .15s ease, transform .2s cubic-bezier(.22,1,.36,1);
+}
+.ghost-btn-soft:hover { background: var(--eo-chip); transform: translateY(-1px); }
 /* 环形图 + 趋势图并排（窄屏堆叠） */
 .led-charts { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
 .led-donut { display: flex; align-items: center; gap: 18px; }
@@ -355,20 +368,4 @@ const fmtDay = (d) => d.slice(5).replace('-', ' 月 ') + ' 日'
 @media (max-width: 640px) { .led-charts { flex-direction: column; align-items: stretch; } .led-donut { justify-content: center; } }
 .led-summary { display: flex; justify-content: center; gap: 30px; text-align: center; padding: 4px 0; }
 .led-summary .led-sum-item { min-width: 78px; }
-.led-fab {
-  position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom, 0px) + 96px); z-index: 58;
-  display: inline-flex; align-items: center; gap: 6px; padding: 12px 22px; border-radius: 999px;
-  font-size: 15px; font-weight: 700; color: var(--eo-primary-deep);
-  background: var(--eo-glass-strong); backdrop-filter: blur(20px) saturate(170%); -webkit-backdrop-filter: blur(20px) saturate(170%);
-  border: 1px solid rgba(255, 255, 255, 0.7);
-  box-shadow: inset 0 1px 0 var(--eo-glass-hi), 0 0 26px rgba(212, 163, 115, 0.32), var(--eo-shadow-soft);
-  transition: transform .2s cubic-bezier(.22,1,.36,1), box-shadow .2s ease;
-}
-.led-fab:hover { transform: translateX(-50%) translateY(-2px); box-shadow: inset 0 1px 0 var(--eo-glass-hi), 0 0 34px rgba(212,163,115,.5), var(--eo-shadow-soft); }
-.led-fab:active { transform: translateX(-50%) scale(.96); }
-@media (min-width: 900px) {
-  .led-fab { left: auto; right: 28px; transform: none; bottom: 28px; }
-  .led-fab:hover { transform: translateY(-2px); }
-  .led-fab:active { transform: scale(.96); }
-}
 </style>

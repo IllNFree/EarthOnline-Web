@@ -143,13 +143,27 @@ const selTasks = computed(() => dueMap.value[selDay.value] || [])
 function calShift(n) { const d = new Date(calBase.value); d.setMonth(d.getMonth() + n); calBase.value = d }
 function pickDay(c) { selDay.value = c.key }
 
-// ---- 日历高度调节：右上角「大/中/小」胶囊切换（记忆选择），同行右栏随 align-items:stretch 自动对齐 ----
-const CAL_SIZES = { '小': '330px', '中': '410px', '大': '500px' }
-const calSize = ref(localStorage.getItem('eo-cal-size') || '中')
-const calMinH = computed(() => CAL_SIZES[calSize.value] || '410px')
-function setCalSize(s) {
-  calSize.value = s
-  try { localStorage.setItem('eo-cal-size', s) } catch { /* 隐私模式忽略 */ }
+// ---- 主页底部三卡（日历 / 时间轴 / 动态）：拖拽任意底边统一调整高度 ----
+// 三者同处 grid 一行，align-items:stretch 保证绝对等高；拖拽任一卡片底边即改整行高度
+const lowerH = ref(Number(localStorage.getItem('eo-lower-h')) || 440)
+let lowerDrag = false, lowerStartY = 0, lowerStartH = 0
+function onLowerDown(e) {
+  lowerDrag = true
+  lowerStartY = e.clientY
+  lowerStartH = lowerH.value
+  window.addEventListener('pointermove', onLowerMove)
+  window.addEventListener('pointerup', onLowerUp)
+  e.preventDefault(); e.stopPropagation()
+}
+function onLowerMove(e) {
+  if (!lowerDrag) return
+  lowerH.value = Math.max(300, Math.min(760, lowerStartH + (e.clientY - lowerStartY)))
+}
+function onLowerUp() {
+  lowerDrag = false
+  window.removeEventListener('pointermove', onLowerMove)
+  window.removeEventListener('pointerup', onLowerUp)
+  try { localStorage.setItem('eo-lower-h', String(Math.round(lowerH.value))) } catch { /* 隐私模式忽略 */ }
 }
 
 const life = computed(() => getLifeStats(store.data.birthDate))
@@ -171,29 +185,6 @@ const timeline = computed(() => {
 })
 function statusLabelOf(s) { return ({ planning: '规划中', active: '进行中', paused: '搁置', done: '已完成' })[s] || s }
 function achTitle(key) { return (achievementMeta(key) || {}).title || key }
-
-// ---- 主页两栏可拖拽调节（左 2/3 日历·任务 / 右 1/3 时间轴+动态） ----
-const homeSplit = ref(0.66)
-const homeLeftPct = computed(() => (homeSplit.value * 100).toFixed(2) + '%')
-const homeLowerRef = ref(null)
-let resizing = false
-function onResizeDown(e) {
-  resizing = true
-  window.addEventListener('pointermove', onResizeMove)
-  window.addEventListener('pointerup', onResizeUp)
-  e.preventDefault(); e.stopPropagation()
-}
-function onResizeMove(e) {
-  if (!resizing || !homeLowerRef.value) return
-  const rect = homeLowerRef.value.getBoundingClientRect()
-  let r = (e.clientX - rect.left) / rect.width
-  homeSplit.value = Math.max(0.42, Math.min(0.8, r))
-}
-function onResizeUp() {
-  resizing = false
-  window.removeEventListener('pointermove', onResizeMove)
-  window.removeEventListener('pointerup', onResizeUp)
-}
 
 // ---- 核心数据卡片堆叠：纯主展示（只看不操作）+ 真 3D 层叠（当前居中、后方露边、景深阴影） ----
 const stack = computed(() => {
@@ -363,20 +354,17 @@ function onPointerUp(e) {
       </button>
     </div>
 
-    <!-- 电脑端两栏：左 2/3 日历·任务 / 右 1/3 时间轴+最近动态（可拖拽中间分隔条调节；同行动态等高，右栏限高滚动） -->
-    <div class="home-lower" ref="homeLowerRef" :style="{ gridTemplateColumns: homeSplit + 'fr ' + (1 - homeSplit) + 'fr' }">
-      <div class="home-resizer" :style="{ left: homeLeftPct }" @pointerdown="onResizeDown" title="拖拽调节左右宽度"></div>
-      <div class="home-left">
+    <!-- 电脑端三卡等高：日历 · 任务 / 人生时间轴 / 最近动态（拖拽任一底边统一调高，align-items:stretch 保证三者绝对等高；内容过多卡内滚动） -->
+    <div class="home-lower" :style="{ minHeight: lowerH + 'px' }">
+      <!-- 日历 · 任务 -->
+      <div class="home-col">
         <div class="section-title">日历 · 任务</div>
-        <div class="glass card cal-card" :style="{ '--cal-h': calMinH }">
+        <div class="glass card cal-card">
           <div class="row between" style="margin-bottom:8px">
             <div class="row" style="gap:6px">
               <button class="btn ghost" style="padding:6px 12px" @click="calShift(-1)"><Icon name="chevron" :size="16" style="transform:rotate(180deg)" /></button>
               <span style="font-weight:700">{{ calTitle }}</span>
               <button class="btn ghost" style="padding:6px 12px" @click="calShift(1)"><Icon name="chevron" :size="16" /></button>
-            </div>
-            <div class="cal-size-capsule" title="调节日历卡高度">
-              <button v-for="(h, s) in CAL_SIZES" :key="s" class="cs-btn" :class="{ on: calSize === s }" @click="setCalSize(s)">{{ s }}</button>
             </div>
           </div>
           <div class="cal-week">
@@ -405,13 +393,19 @@ function onPointerUp(e) {
             <div v-else class="muted" style="font-size:13px;padding:8px 0">该日暂无截止任务，点击日历日期查看其他天。</div>
           </div>
         </div>
+        <div class="card-resizer" @pointerdown="onLowerDown" title="拖拽调节卡片高度"></div>
       </div>
 
-      <div class="home-right">
+      <!-- 人生时间轴 -->
+      <div class="home-col">
         <div class="section-title">人生时间轴</div>
-        <div class="glass card">
-          <div v-if="!timeline.length" class="muted" style="font-size:14px">还没有记录，去添加第一篇笔记或足迹吧。</div>
-          <div v-for="(t, i) in timeline" :key="i" class="row" style="padding:8px 0;border-bottom:1px solid var(--eo-glass-border)" :style="i === timeline.length - 1 ? 'border:none' : ''">
+        <div class="glass card home-col-card">
+          <div v-if="!timeline.length" class="empty-state" style="padding:16px 8px">
+            <span class="empty-illu"><Icon name="map-pin" :size="28" /></span>
+            <div class="es-title">时间轴还空着</div>
+            <div class="es-sub">添加笔记或足迹，记录人生坐标</div>
+          </div>
+          <div v-else v-for="(t, i) in timeline" :key="i" class="row" style="padding:8px 0;border-bottom:1px solid var(--eo-glass-border)" :style="i === timeline.length - 1 ? 'border:none' : ''">
             <span class="avatar" style="width:34px;height:34px"><Icon :name="t.icon" :size="18" /></span>
             <div style="flex:1">
               <div style="font-size:14px">{{ t.text }}</div>
@@ -419,11 +413,19 @@ function onPointerUp(e) {
             </div>
           </div>
         </div>
+        <div class="card-resizer" @pointerdown="onLowerDown" title="拖拽调节卡片高度"></div>
+      </div>
 
+      <!-- 最近动态 -->
+      <div class="home-col">
         <div class="section-title">最近动态</div>
-        <div class="glass card">
-          <div v-if="!recent.length" class="muted" style="font-size:14px">暂无动态。</div>
-          <transition-group name="fade">
+        <div class="glass card home-col-card">
+          <div v-if="!recent.length" class="empty-state" style="padding:16px 8px">
+            <span class="empty-illu"><Icon name="sparkles" :size="28" /></span>
+            <div class="es-title">还没有动态</div>
+            <div class="es-sub">使用任意功能，这里会留下足迹</div>
+          </div>
+          <transition-group v-else name="fade">
             <div v-for="(a, i) in recent" :key="a.id" class="row" style="padding:7px 0">
               <Icon :name="a.icon" :size="18" />
               <span style="font-size:14px;flex:1">{{ a.text }}</span>
@@ -431,6 +433,7 @@ function onPointerUp(e) {
             </div>
           </transition-group>
         </div>
+        <div class="card-resizer" @pointerdown="onLowerDown" title="拖拽调节卡片高度"></div>
       </div>
     </div>
 
@@ -511,24 +514,21 @@ function onPointerUp(e) {
 }
 .cal-cell.sel .cal-dot { background: #fff; }
 
-/* 日历卡：高度可调（大/中/小）——桌面端撑满 min-height，右栏卡片随 grid stretch 自动对齐 */
+/* 日历卡：高度可调（桌面端撑满 min-height，右栏卡片随 grid stretch 自动对齐） */
 .cal-card { display: flex; flex-direction: column; }
 .cal-foot { flex: 1; min-height: 0; }
-.cal-size-capsule {
-  display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px;
-  background: var(--eo-chip); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+/* 主页底部三卡：每列 flex 列，卡片撑满列高；拖拽底边统一调高 */
+.home-col { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.card-resizer {
+  height: 14px; margin-top: 2px; flex: none; cursor: ns-resize; position: relative;
+  border-radius: 999px; transition: background .2s ease;
 }
-.cs-btn {
-  padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
-  color: var(--eo-ink-soft); transition: background .15s ease, color .15s ease, box-shadow .15s ease;
+.card-resizer::after {
+  content: ''; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: 40px; height: 5px; border-radius: 999px; background: var(--eo-glass-border); transition: background .2s ease, box-shadow .2s ease;
 }
-.cs-btn:hover { color: var(--eo-ink); }
-.cs-btn.on {
-  background: linear-gradient(135deg, var(--eo-primary), var(--eo-primary-deep)); color: #fff;
-  box-shadow: 0 2px 8px -2px rgba(176, 133, 83, 0.55);
-}
-@media (min-width: 900px) {
-  .cal-card { min-height: var(--cal-h, 410px); }
+.card-resizer:hover::after, .card-resizer:active::after {
+  background: var(--eo-primary); box-shadow: 0 0 12px rgba(212, 163, 115, 0.6);
 }
 
 /* 卡片堆叠：真 3D 景深层叠（后方卡片向下露边）+ 拖拽 */

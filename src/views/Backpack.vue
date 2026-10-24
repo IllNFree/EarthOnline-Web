@@ -181,7 +181,10 @@ async function del(kind, id) {
         <Icon name="search" :size="16" />
         <input v-model="kw" placeholder="搜索名称 / 标签…" />
       </div>
-      <button class="add-btn" @click="showAdd = true"><Icon name="plus" :size="16" /> 添加{{ sub === 'item' ? '物品' : '收藏' }}</button>
+      <div class="row" style="gap:8px">
+        <button class="ghost-btn-soft" @click="$router.push('/steam')"><Icon name="gamepad" :size="16" /> Steam 游戏库</button>
+        <button class="add-btn" @click="showAdd = true"><Icon name="plus" :size="16" /> 添加{{ sub === 'item' ? '物品' : '收藏' }}</button>
+      </div>
     </div>
     <div class="row between" style="margin-bottom:12px">
       <div class="capsule" style="padding:4px;gap:4px">
@@ -200,18 +203,6 @@ async function del(kind, id) {
         <Icon name="tag" :size="12" /> {{ t }}
       </button>
     </div>
-
-    <!-- Steam 入口（收藏页，点击跳转独立页）：精简小卡，绝不挤占正常收藏列表展示 -->
-    <GlassCard v-if="sub === 'collection'" padding="9" hover glow style="margin-bottom:10px;cursor:pointer" @click="$router.push('/steam')">
-      <div class="row" style="gap:10px">
-        <span class="avatar" style="width:30px;height:30px;background:var(--eo-chip);color:var(--eo-primary-deep)"><Icon name="cloud" :size="16" /></span>
-        <div style="flex:1;min-width:0">
-          <div style="font-weight:700;font-size:13px">Steam 游戏库</div>
-          <div class="muted" style="font-size:11px">配置后拉取云端游戏 · 点击进入</div>
-        </div>
-        <Icon name="chevron" :size="16" />
-      </div>
-    </GlassCard>
 
     <!-- 物品（已取消类型字段） -->
     <template v-if="sub === 'item'">
@@ -236,7 +227,12 @@ async function del(kind, id) {
           </div>
         </GlassCard>
       </div>
-      <div v-if="!items.length" class="muted" style="text-align:center;padding:30px">还没有物品</div>
+      <div v-if="!items.length" class="empty-state">
+        <span class="empty-illu"><Icon name="backpack" :size="32" /></span>
+        <div class="es-title">背包还空着</div>
+        <div class="es-sub">把值得收藏的物件都收进来吧</div>
+        <button class="btn" style="margin-top:6px" @click="showAdd = true"><Icon name="plus" :size="16" /> 添加你的第一件物品</button>
+      </div>
     </template>
 
     <!-- 收藏（支持图片/音频/视频/PDF/文档文件与链接） -->
@@ -270,7 +266,12 @@ async function del(kind, id) {
           </div>
         </GlassCard>
       </div>
-      <div v-if="!collections.length" class="muted" style="text-align:center;padding:30px">还没有收藏</div>
+      <div v-if="!collections.length" class="empty-state">
+        <span class="empty-illu"><Icon name="star" :size="32" /></span>
+        <div class="es-title">还没有收藏</div>
+        <div class="es-sub">链接、文件或灵感，都先收在这里</div>
+        <button class="btn" style="margin-top:6px" @click="showAdd = true"><Icon name="plus" :size="16" /> 添加你的第一份收藏</button>
+      </div>
     </template>
 
     <Modal :title="sub === 'item' ? '添加物品' : '添加收藏'" :show="showAdd" @close="showAdd = false">
@@ -323,4 +324,11 @@ async function del(kind, id) {
 
 <style scoped>
 .ghost-btn { color: var(--eo-ink-soft); padding: 6px; }
+.ghost-btn-soft {
+  display: inline-flex; align-items: center; gap: 6px; padding: 9px 14px; border-radius: 999px; font-size: 14px; font-weight: 600;
+  color: var(--eo-primary-deep); background: var(--eo-glass); border: 1px solid var(--eo-glass-border);
+  backdrop-filter: blur(16px) saturate(165%); -webkit-backdrop-filter: blur(16px) saturate(165%);
+  box-shadow: inset 0 1px 0 var(--eo-glass-hi); transition: background .15s ease, transform .2s cubic-bezier(.22,1,.36,1);
+}
+.ghost-btn-soft:hover { background: var(--eo-chip); transform: translateY(-1px); }
 </style>

@@ -334,26 +334,17 @@ input, textarea, select { font-family: inherit; color: inherit; }
   .grid2 { grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
   .cols-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; align-items: start; }
   .cols-2 > .glass { margin-bottom: 0; }
-  .home-lower { position: relative; display: grid; grid-template-columns: 2fr 1fr; gap: 14px; align-items: stretch; }
-  /* 左栏 flex 列：日历卡撑满 min-height（大/中/小可调），保证与右栏水平线对齐 */
-  .home-left { display: flex; flex-direction: column; min-height: 0; }
-  .home-left > .glass { flex: 1 1 auto; min-height: 0; }
-  .home-right { display: flex; flex-direction: column; gap: 14px; min-height: 0; }
-  /* 右栏卡片与左栏等高：时间轴/动态数据过多时内部滚动，绝不无限撑高 */
-  .home-right > .glass { flex: 1 1 0; min-height: 140px; overflow-y: auto; }
-  /* 中间拖拽分隔条（仅桌面两栏时出现） */
-  .home-resizer {
-    position: absolute; top: 8px; bottom: 8px; width: 16px; transform: translateX(-50%);
-    cursor: col-resize; z-index: 6; display: block; border-radius: 999px;
-  }
-  .home-resizer::after {
-    content: ''; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
-    width: 4px; height: 44px; border-radius: 999px; background: var(--eo-glass-border);
-    transition: background .2s ease, box-shadow .2s ease;
-  }
-  .home-resizer:hover::after, .home-resizer:active::after {
-    background: var(--eo-primary); box-shadow: 0 0 14px rgba(212, 163, 115, .6);
-  }
+  .home-lower { position: relative; display: grid; grid-template-columns: 2fr 1fr 1fr; grid-template-rows: 1fr; gap: 14px; align-items: stretch; }
+  /* 三列等高：每列 flex 列，卡片撑满列高并内部滚动，绝不无限撑高 */
+  .home-col { display: flex; flex-direction: column; min-height: 0; }
+  .home-col > .card { flex: 1 1 0; min-height: 0; overflow-y: auto; margin-bottom: 0; }
+  .home-col > .card.home-col-card { margin-bottom: 0; }
+}
+/* 手机 PWA（<900px）：三卡纵向堆叠，隐藏高度拖拽条，高度自适应内容 */
+@media (max-width: 899px) {
+  .home-lower { min-height: 0 !important; gap: 14px; }
+  .card-resizer { display: none; }
+  .home-col > .card { margin-bottom: 14px; }
 }
 
 /* ---- 通用 ---- */
