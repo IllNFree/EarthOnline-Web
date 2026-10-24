@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { useAppStore } from '../stores/app.js'
 import { useDialogStore } from '../stores/dialog.js'
 import { searchPlaces, mountMap, loadAMap } from '../lib/map.js'
@@ -8,6 +8,7 @@ import Modal from '../components/GlassBottomSheet.vue'
 
 const store = useAppStore()
 const dialog = useDialogStore()
+const route = useRoute()
 const mapEl = ref(null)
 let mapCtl = null
 const query = ref('')
@@ -33,6 +34,8 @@ onMounted(async () => {
       form.value.name = form.value.name || '我的足迹'
     })
   } catch (e) { loadErr.value = e.message || '地图加载失败' }
+  // 主页速览「留足迹」直达：自动聚焦搜索框
+  if (route.query.add) nextTick(() => searchInput.value && searchInput.value.focus())
 })
 onUnmounted(() => { if (mapCtl) mapCtl.destroy() })
 
@@ -88,16 +91,18 @@ async function removeLoc(id) {
 
 <template>
   <div class="page wide" style="padding:0" @click="onBlankClick">
-    <div style="position:relative;height:42vh;margin:0">
-      <div ref="mapEl" style="width:100%;height:100%;border-radius:0 0 22px 22px;overflow:hidden"></div>
-      <div v-if="loadErr" class="glass card" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;margin:0">{{ loadErr }}</div>
-      <!-- 搜索框：点击即输入，回车搜索（去除多余搜索按钮） -->
-      <div class="capsule" style="position:absolute;left:12px;right:12px;top:12px;z-index:5;background:var(--eo-glass-strong)">
+    <!-- 搜索区：独立于地图上方，互不重叠 -->
+    <div class="map-top">
+      <div class="capsule" style="background:var(--eo-glass-strong)">
         <Icon name="search" :size="18" />
         <input ref="searchInput" v-model="query" placeholder="搜索地点（如：西湖）" @keyup.enter="doSearch" />
         <button v-if="query" class="ghost-btn" style="padding:4px" title="清空" @click.stop="query = ''; results = []"><Icon name="x" :size="16" /></button>
       </div>
-      <!-- 搜索结果：紧贴搜索框正下方（需求 #13），右上 X 可关闭 -->
+    </div>
+    <div style="position:relative;height:46vh;margin:0 14px">
+      <div ref="mapEl" style="width:100%;height:100%;border-radius:18px;overflow:hidden"></div>
+      <div v-if="loadErr" class="glass card" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;margin:0">{{ loadErr }}</div>
+      <!-- 搜索结果：落在地图内顶部，不遮挡搜索框 -->
       <div v-if="searching || results.length" class="map-results">
         <div class="row between" style="padding:8px 8px 0 14px" v-if="!searching && results.length">
           <span class="muted" style="font-size:12px">搜索结果（{{ results.length }}）</span>
@@ -136,8 +141,9 @@ async function removeLoc(id) {
 
 <style scoped>
 .ghost-btn { color: var(--eo-ink-soft); padding: 6px; }
+.map-top { padding: 12px 16px 10px; }
 .map-results {
-  position: absolute; left: 12px; right: 12px; top: 68px; z-index: 6;
+  position: absolute; left: 0; right: 0; top: 12px; z-index: 6;
   max-height: 38vh; overflow-y: auto; border-radius: 18px;
   background: var(--eo-glass-strong); backdrop-filter: blur(20px) saturate(150%);
   -webkit-backdrop-filter: blur(20px) saturate(150%);

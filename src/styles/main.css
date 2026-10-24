@@ -8,7 +8,7 @@
   --eo-bg: #F8F6F2;
   --eo-bg-2: #F0EBE4;
   --eo-ink: #1E1A16;
-  --eo-ink-soft: #66605A;
+  --eo-ink-soft: #5F5952;
   --eo-glass: rgba(255, 253, 250, 0.62);
   --eo-glass-strong: rgba(255, 253, 250, 0.80);
   --eo-glass-border: rgba(214, 205, 192, 0.78);
@@ -181,26 +181,34 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .btn.ghost::before { background: linear-gradient(125deg, rgba(255,255,255,.22) 0%, transparent 40%); }
 .btn.danger { background: linear-gradient(135deg, #E0745A, #D9694E); }
 
-/* ---- 顶部状态栏（不透明硬色块遮挡） ---- */
+/* ---- 顶部状态栏：轻盈毛玻璃半透明（去厚重橙色块，需求 #8） ---- */
 .statusbar {
   position: fixed; top: 0; left: 0; right: 0; z-index: 60;
-  height: calc(env(safe-area-inset-top, 0px) + 70px);
-  background: var(--eo-statusbar);
-  color: #fff; display: flex; flex-direction: column; justify-content: flex-end; padding: 0 18px 8px;
-  font-size: 14px; font-weight: 600; letter-spacing: .3px;
+  height: calc(env(safe-area-inset-top, 0px) + 58px);
+  background: rgba(248, 246, 242, 0.58);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.55) inset,
+    0 -1px 0 rgba(150, 95, 55, 0.10) inset,
+    0 10px 26px -20px rgba(154, 124, 88, 0.35);
+  color: var(--eo-ink); display: flex; flex-direction: column; justify-content: flex-end; padding: 0 18px 6px;
+  font-size: 13px; font-weight: 600; letter-spacing: .3px;
 }
+[data-theme='dark'] .statusbar { background: rgba(26, 26, 26, 0.55); box-shadow: 0 1px 0 rgba(255, 235, 210, 0.10) inset, 0 -1px 0 rgba(0,0,0,.2) inset, 0 10px 26px -20px rgba(0,0,0,.6); }
 .statusbar__top { display: flex; align-items: center; }
 .statusbar .spacer { flex: 1; }
-.statusbar .title { font-weight: 700; }
-.xpbar { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 11px; font-weight: 600; opacity: .96; }
-.xpbar__lv { white-space: nowrap; }
-.xpbar__xp { white-space: nowrap; opacity: .85; }
-.xpbar__track { flex: 1; height: 6px; border-radius: 99px; background: rgba(255,255,255,.22); overflow: hidden; }
-.xpbar__track i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, #F3D9B7, #D4A373); }
+.statusbar .title { font-weight: 700; font-size: 14px; }
+.xpbar { display: flex; align-items: center; gap: 8px; margin-top: 4px; font-size: 10px; font-weight: 600; }
+.xpbar__lv { white-space: nowrap; color: var(--eo-primary-deep); }
+.xpbar__xp { white-space: nowrap; color: var(--eo-ink-soft); }
+.xpbar__track { flex: 1; height: 4px; border-radius: 99px; background: rgba(30, 26, 22, 0.12); overflow: hidden; }
+[data-theme='dark'] .xpbar__track { background: rgba(255, 235, 210, 0.14); }
+.xpbar__track i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, #E9CFA9, #D4A373); }
 
 /* ---- 内容区 ---- */
 .page {
-  position: absolute; top: calc(env(safe-area-inset-top, 0px) + 70px);
+  position: absolute; top: calc(env(safe-area-inset-top, 0px) + 58px);
   left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom, 0px) + 86px);
   overflow-y: auto; padding: 16px 16px 28px; -webkit-overflow-scrolling: touch;
 }

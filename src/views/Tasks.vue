@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, provide, watch } from 'vue'
+import { ref, computed, provide, watch, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAppStore } from '../stores/app.js'
 import { useDialogStore } from '../stores/dialog.js'
@@ -13,6 +13,8 @@ const dialog = useDialogStore()
 const route = useRoute()
 const tab = ref(route.query.tab === 'todo' ? 'todo' : 'daily')
 watch(() => route.query.tab, (v) => { if (v) tab.value = v === 'todo' ? 'todo' : 'daily' })
+// 主页速览「新任务」直达：自动弹开新建任务框
+onMounted(() => { if (route.query.add) openEditor(null, null) })
 const hideDone = ref(false)
 const showAdd = ref(false)
 const batchMode = ref(false)

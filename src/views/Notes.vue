@@ -1,5 +1,6 @@
 <script setup>
-import { ref, computed, nextTick } from 'vue'
+import { ref, computed, nextTick, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { useAppStore } from '../stores/app.js'
 import { useDialogStore } from '../stores/dialog.js'
 import Icon from '../components/Icon.vue'
@@ -8,6 +9,9 @@ import Modal from '../components/GlassBottomSheet.vue'
 
 const store = useAppStore()
 const dialog = useDialogStore()
+const route = useRoute()
+// 主页速览「写笔记」直达：自动弹开新建笔记窗口
+onMounted(() => { if (route.query.add) openNew() })
 const showEdit = ref(false)
 const editing = ref(null)
 // 取消默认分类：类型与标签合并为纯用户自定义标签（需求 #15）

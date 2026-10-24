@@ -1,5 +1,5 @@
 <script setup>
-// 数据中心：等级概览 + 六宫格 + 周期报告（日报/周报/年报合一，任务与记账整合）+ 趋势图
+// 数据中心：等级概览 + 六宫格 + 周期报告（日报/周报/年报合一，任务与记账整合）
 import { ref, computed } from 'vue'
 import { useAppStore } from '../stores/app.js'
 import { todayStr, xpLevelInfo } from '../lib/model.js'
@@ -125,39 +125,6 @@ const report = computed(() => {
   const rangeLabel = key === 'daily' ? today : (key === 'weekly' ? from + ' ~ ' + to : new Date().getFullYear() + ' 年')
   return { key, rangeLabel, agg, bars, maxV, title, summary }
 })
-
-// 近 14 日：每日新建/完成任务数
-const trend = computed(() => {
-  const days = []
-  for (let i = 13; i >= 0; i--) {
-    const d = new Date(); d.setDate(d.getDate() - i)
-    const key = todayStr(d)
-    days.push({
-      key, label: p2(d.getMonth() + 1) + '/' + p2(d.getDate()),
-      done: store.data.tasks.filter((t) => t.doneAt && t.doneAt.slice(0, 10) === key).length,
-      created: store.data.tasks.filter((t) => t.createdAt === key).length
-    })
-  }
-  return days
-})
-const trendMax = computed(() => Math.max(1, ...trend.value.map((d) => Math.max(d.done, d.created))))
-
-// 近 6 个月记账（收入/支出柱状）
-const ledgerMonths = computed(() => {
-  const out = []
-  for (let i = 5; i >= 0; i--) {
-    const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i)
-    const mk = d.getFullYear() + '-' + p2(d.getMonth() + 1)
-    let inc = 0, exp = 0
-    store.data.ledger.records.forEach((r) => {
-      if (!r.date.startsWith(mk)) return
-      if (r.type === 'income') inc += r.amount; else exp += r.amount
-    })
-    out.push({ label: (d.getMonth() + 1) + '月', inc, exp })
-  }
-  return out
-})
-const ledMax = computed(() => Math.max(1, ...ledgerMonths.value.map((m) => Math.max(m.inc, m.exp))))
 </script>
 
 <template>
@@ -238,43 +205,6 @@ const ledMax = computed(() => Math.max(1, ...ledgerMonths.value.map((m) => Math.
         </div>
       </div>
     </div>
-
-    <!-- 14 日任务趋势 -->
-    <div class="section-title">近 14 日任务趋势</div>
-    <div class="glass card">
-      <div class="chart-row">
-        <div v-for="d in trend" :key="d.key" class="chart-col">
-          <div class="chart-bars">
-            <i class="b-done" :style="{ height: (d.done / trendMax * 64) + 'px' }" :title="d.done + ' 完成'"></i>
-            <i class="b-new" :style="{ height: (d.created / trendMax * 64) + 'px' }" :title="d.created + ' 新建'"></i>
-          </div>
-          <span class="muted">{{ d.label }}</span>
-        </div>
-      </div>
-      <div class="row" style="gap:14px;margin-top:8px;font-size:12px">
-        <span class="row" style="gap:5px"><i class="dot" style="background:var(--eo-primary)"></i>完成</span>
-        <span class="row" style="gap:5px"><i class="dot" style="background:var(--eo-glass-border)"></i>新建</span>
-      </div>
-    </div>
-
-    <!-- 近 6 个月收支 -->
-    <div class="section-title">近 6 个月收支</div>
-    <div class="glass card">
-      <div class="chart-row">
-        <div v-for="m in ledgerMonths" :key="m.label" class="chart-col">
-          <div class="chart-bars">
-            <i class="b-inc" :style="{ height: (m.inc / ledMax * 64) + 'px' }" :title="'收入 ' + m.inc.toFixed(0)"></i>
-            <i class="b-exp" :style="{ height: (m.exp / ledMax * 64) + 'px' }" :title="'支出 ' + m.exp.toFixed(0)"></i>
-          </div>
-          <span class="muted">{{ m.label }}</span>
-        </div>
-      </div>
-      <div class="row" style="gap:14px;margin-top:8px;font-size:12px">
-        <span class="row" style="gap:5px"><i class="dot" style="background:var(--eo-good)"></i>收入</span>
-        <span class="row" style="gap:5px"><i class="dot" style="background:var(--eo-bad)"></i>支出</span>
-      </div>
-      <div v-if="!store.data.ledger.records.length" class="muted" style="font-size:12px;margin-top:6px">还没有记账数据，去「记账」页添加后这里会自动生成图表。</div>
-    </div>
   </div>
 </template>
 
@@ -304,9 +234,4 @@ const ledMax = computed(() => Math.max(1, ...ledgerMonths.value.map((m) => Math.
 .chart-bars { display: flex; align-items: flex-end; gap: 3px; height: 64px; }
 .chart-bars i { width: 8px; border-radius: 4px 4px 0 0; min-height: 2px; display: block; transition: height .4s cubic-bezier(.22,1,.36,1); }
 .b-act { background: linear-gradient(180deg, var(--eo-primary-soft), var(--eo-primary)); }
-.b-done { background: var(--eo-primary); }
-.b-new { background: var(--eo-glass-border); }
-.b-inc { background: var(--eo-good); }
-.b-exp { background: var(--eo-bad); }
-.dot { width: 9px; height: 9px; border-radius: 3px; display: inline-block; }
 </style>

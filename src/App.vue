@@ -213,7 +213,7 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-.ghost-btn { color: #fff; display: inline-flex; padding: 4px; opacity: .92; }
+.ghost-btn { color: var(--eo-ink-soft); display: inline-flex; padding: 4px; opacity: .92; }
 .ghost-btn:active { opacity: .6; }
 
 .route-wrap { position: absolute; inset: 0; z-index: 1; }

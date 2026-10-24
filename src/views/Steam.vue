@@ -108,26 +108,26 @@ const totalTime = computed(() => games.value.reduce((s, g) => s + (g.playtimeHou
 
 <style scoped>
 /* 双栏：左配置右展示；窄屏自动上下堆叠 */
-.st-layout { display: grid; grid-template-columns: 400px 1fr; gap: 14px; align-items: start; margin-top: 6px; }
-@media (max-width: 900px) { .st-layout { grid-template-columns: 1fr; } }
+.st-layout { display: grid; grid-template-columns: 480px 1fr; gap: 14px; align-items: start; margin-top: 6px; }
+@media (max-width: 980px) { .st-layout { grid-template-columns: 1fr; } }
 
 .st-hint {
   display: flex; align-items: flex-start; gap: 8px;
-  font-size: 12px; line-height: 1.7; color: var(--eo-ink-soft);
-  padding: 10px 12px; margin-bottom: 12px;
+  font-size: 12px; line-height: 1.75; color: var(--eo-ink-soft);
+  padding: 11px 14px; margin-bottom: 16px;
   border-radius: 12px; background: var(--eo-chip);
   overflow-wrap: anywhere; word-break: break-word; white-space: normal;
 }
 .st-hint svg { flex: none; margin-top: 3px; }
 
-.st-form { display: grid; grid-template-columns: auto 1fr; gap: 12px 14px; align-items: start; }
+.st-form { display: grid; grid-template-columns: auto 1fr; gap: 16px 18px; align-items: start; }
 .st-label {
   font-size: 13px; font-weight: 600; color: var(--eo-ink);
-  padding-top: 10px; white-space: nowrap; min-width: 82px;
+  padding-top: 11px; white-space: nowrap; min-width: 96px;
 }
-.st-ctrl { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-.st-ctrl input { width: 100%; min-width: 0; }
-.st-sub { font-size: 11px; color: var(--eo-ink-soft); line-height: 1.5; overflow-wrap: anywhere; }
+.st-ctrl { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.st-ctrl input { width: 100%; min-width: 0; padding: 10px 12px; }
+.st-sub { font-size: 11px; color: var(--eo-ink-soft); line-height: 1.6; overflow-wrap: anywhere; }
 @media (max-width: 560px) {
   .st-form { grid-template-columns: 1fr; gap: 4px; }
   .st-label { padding-top: 8px; white-space: normal; }

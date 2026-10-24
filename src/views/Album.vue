@@ -1,5 +1,6 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { useAppStore } from '../stores/app.js'
 import { useDialogStore } from '../stores/dialog.js'
 import Icon from '../components/Icon.vue'
@@ -8,12 +9,15 @@ import Modal from '../components/GlassBottomSheet.vue'
 
 const store = useAppStore()
 const dialog = useDialogStore()
+const route = useRoute()
 const tagFilter = ref('')
 const batchMode = ref(false)
 const selected = ref(new Set())
 const lightbox = ref(null)
 const showAdd = ref(false)
 const form = ref({ name: '', tags: '', dataUrl: '' })
+// 主页速览「传照片」直达：自动弹开上传窗口
+onMounted(() => { if (route.query.add) showAdd.value = true })
 
 // 「分类」已废弃，统一走标签过滤（数据层 category 保留兼容旧数据）
 const tags = computed(() => Array.from(new Set(store.data.photos.flatMap((p) => p.tags || []))))

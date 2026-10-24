@@ -1,6 +1,7 @@
 <script setup>
 // 记账模块：收支记录 / 分类 / 月度概览（含分类环形图）
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
+import { useRoute } from 'vue-router'
 import { useAppStore } from '../stores/app.js'
 import { useDialogStore } from '../stores/dialog.js'
 import { todayStr } from '../lib/model.js'
@@ -9,8 +10,17 @@ import Modal from '../components/GlassBottomSheet.vue'
 
 const store = useAppStore()
 const dialog = useDialogStore()
+const route = useRoute()
 const showAdd = ref(false)
 const form = ref({ type: 'expense', amount: '', category: '', note: '', date: '' })
+const amountInput = ref(null)
+// 主页速览「记一笔」直达：自动弹开记账窗口并聚焦金额输入框
+onMounted(() => {
+  if (route.query.add) {
+    openAdd()
+    nextTick(() => amountInput.value && amountInput.value.focus())
+  }
+})
 
 const monthBase = ref(new Date())
 const p2 = (n) => String(n).padStart(2, '0')
@@ -206,7 +216,7 @@ const fmtDay = (d) => d.slice(5).replace('-', ' 月 ') + ' 日'
         <button class="btn ghost" :style="form.type === 'expense' ? 'background:var(--eo-primary);color:#fff' : ''" @click="setType('expense')">支出</button>
         <button class="btn ghost" :style="form.type === 'income' ? 'background:var(--eo-primary);color:#fff' : ''" @click="setType('income')">收入</button>
       </div>
-      <div class="field"><label>金额</label><input type="number" min="0" step="0.01" v-model="form.amount" placeholder="0.00" /></div>
+      <div class="field"><label>金额</label><input ref="amountInput" type="number" min="0" step="0.01" v-model="form.amount" placeholder="0.00" /></div>
       <div class="field"><label>分类</label>
         <div class="row wrap" style="gap:6px">
           <button v-for="c in cats" :key="c.name" class="chip" :style="form.category === c.name ? 'background:var(--eo-primary);color:#fff' : ''" @click="form.category = c.name">
