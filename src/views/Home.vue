@@ -25,7 +25,6 @@ const moreWaffle = [
   { name: 'stats', icon: 'chart', label: '数据中心', to: '/stats' },
   { name: 'trash', icon: 'trash', label: '回收站', to: '/trash' },
   { name: 'steam', icon: 'cloud', label: 'Steam', to: '/steam' },
-  { name: 'notifications', icon: 'bell', label: '通知', to: '/notifications' },
   { name: 'settings', icon: 'settings', label: '设置', to: '/settings' }
 ]
 function go(to) { router.push(to) }

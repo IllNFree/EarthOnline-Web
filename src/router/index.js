@@ -12,7 +12,7 @@ const routes = [
   { path: '/profile', redirect: '/settings' },
   { path: '/achievements', name: 'achievements', component: () => import('../views/Achievements.vue'), meta: { title: '成就殿堂' } },
   { path: '/stats', name: 'stats', component: () => import('../views/Stats.vue'), meta: { title: '数据中心' } },
-  { path: '/notifications', name: 'notifications', component: () => import('../views/Notifications.vue'), meta: { title: '通知中心' } },
+  { path: '/notifications', redirect: '/settings' },
   { path: '/ledger', name: 'ledger', component: () => import('../views/Ledger.vue'), meta: { title: '记账' } },
   { path: '/privacy', name: 'privacy', component: () => import('../views/Privacy.vue'), meta: { title: '隐私政策' } },
   { path: '/trash', name: 'trash', component: () => import('../views/Trash.vue'), meta: { title: '回收站' } },

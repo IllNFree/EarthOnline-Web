@@ -1,10 +1,11 @@
 <script setup>
 import { ref, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { useAppStore } from '../stores/app.js'
-import { APP_INFO, CHANGELOG, getLifeStats, growthStageOf } from '../lib/model.js'
+import { APP_INFO, CHANGELOG, getLifeStats, growthStageOf, todayStr, sanitizeState } from '../lib/model.js'
+import { ACHIEVEMENTS } from '../lib/achievements.js'
 import { downloadBackup, parseBackup } from '../lib/backup.js'
 import { testConnection, pushBackup, pullBackup } from '../lib/webdav.js'
-import { sanitizeState } from '../lib/model.js'
 import Icon from '../components/Icon.vue'
 import GlassUploader from '../components/GlassUploader.vue'
 import AvatarCropper from '../components/AvatarCropper.vue'
@@ -13,6 +14,7 @@ import { useDialogStore } from '../stores/dialog.js'
 
 const store = useAppStore()
 const dialog = useDialogStore()
+const $routerPush = useRouter().push
 const theme = ref(store.theme)
 const dav = ref({ url: '', user: '', pass: '' })
 const davMsg = ref('')
@@ -81,8 +83,28 @@ function pushAppearance() {
   store.applyTheme()
 }
 
-// ---------- 通知 ----------
+// ---------- 通知（原「通知中心」整体并入设置，弹窗查看） ----------
 const notifState = ref(typeof Notification !== 'undefined' ? Notification.permission : 'unsupported')
+const showNotif = ref(false)
+const today = todayStr()
+// 待关注提醒：今日截止 / 已逾期（派生自真实数据）
+const dueItems = computed(() => {
+  const out = []
+  store.data.tasks.forEach((t) => {
+    if (t.status === 'done' || !t.dueDate) return
+    if (t.dueDate < today) out.push({ id: 'over-' + t.id, icon: 'bolt', tone: 'bad', title: '已逾期：' + t.title, sub: '截止 ' + t.dueDate + (t.dueTime ? ' ' + t.dueTime : ''), to: '/tasks' })
+    else if (t.dueDate === today) out.push({ id: 'due-' + t.id, icon: 'clock', tone: 'warn', title: '今日截止：' + t.title, sub: t.dueTime ? '今天 ' + t.dueTime : '今天', to: '/tasks' })
+  })
+  return out
+})
+// 成就动态（最近 3 条）
+const achievementNews = computed(() => {
+  return store.data.achievements.slice(-3).reverse().map((a) => {
+    const d = ACHIEVEMENTS.find((x) => x.key === a.key)
+    return { id: 'ach-' + a.key, icon: d ? d.icon : 'trophy', tone: 'good', title: '成就解锁：' + (d ? d.title : a.key), sub: '解锁于 ' + a.unlockedAt, to: '/achievements' }
+  })
+})
+const reminders = computed(() => dueItems.value.concat(achievementNews.value))
 async function askNotif() {
   if (typeof Notification === 'undefined') { store.showToast('当前浏览器不支持通知'); return }
   try {
@@ -94,7 +116,13 @@ async function askNotif() {
     } else if (p === 'denied') store.showToast('通知已被拒绝，可在浏览器设置中恢复')
   } catch (e) { store.showToast('通知开启失败：' + e.message) }
 }
+function goReminder(to) { showNotif.value = false; $routerPush(to) }
 const notifLabel = computed(() => ({ granted: '已开启', default: '未开启', denied: '已被拒绝', unsupported: '不支持' }[notifState.value] || notifState.value))
+
+// ---------- 关于页：更新日志 / 赞助 弹窗化 ----------
+const showLog = ref(false)
+const showSponsor = ref(false)
+const SPONSORS = ['海神唐三', 'Seastar', '清浅', '𝓛𝓾𝓬𝓲𝓯𝓮𝓻', 'Cyou2']
 
 // ---------- 数据 · 备份与同步 ----------
 function exportData() { downloadBackup(store.data); store.showToast('备份已下载') }
@@ -172,14 +200,21 @@ async function hardReset() {
       </div>
     </div>
 
-    <!-- 通知 -->
+    <!-- 通知（原独立「通知中心」并入设置：开关 + 弹窗查看） -->
     <div class="section-title">通知</div>
-    <div class="glass card row between">
+    <div class="glass card row between" style="margin-bottom:10px">
       <div style="flex:1;min-width:0">
-        <div style="font-weight:600">桌面通知</div>
+        <div style="font-weight:600">系统通知</div>
         <div class="muted" style="font-size:12px">当前状态：{{ notifLabel }} · 开启后任务截止提醒更及时</div>
       </div>
       <button class="btn" :disabled="notifState === 'granted'" @click="askNotif"><Icon name="bell" :size="16" /> {{ notifState === 'granted' ? '已开启' : '开启通知' }}</button>
+    </div>
+    <div class="glass card row between" style="cursor:pointer" @click="showNotif = true">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600">待关注提醒</div>
+        <div class="muted" style="font-size:12px">今日截止 / 已逾期 / 成就动态 · 共 {{ reminders.length }} 条</div>
+      </div>
+      <Icon name="chevron" :size="18" />
     </div>
 
     <!-- 数据 · 备份与同步 -->
@@ -206,7 +241,7 @@ async function hardReset() {
     <div class="section-title">关于</div>
     <div class="glass card">
       <div class="row" style="gap:12px">
-        <img src="/icons/icon.svg" alt="" style="width:52px;height:52px;border-radius:14px" />
+        <img src="/icons/icon.svg" alt="Logo" style="width:56px;height:56px;border-radius:16px;box-shadow:0 10px 24px -10px rgba(154,124,88,.55), inset 0 1px 0 rgba(255,255,255,.4)" />
         <div style="flex:1;min-width:0">
           <div class="row" style="gap:8px"><span style="font-size:18px;font-weight:800">地球Online</span><span class="chip">v{{ APP_INFO.version }}</span></div>
           <div class="muted" style="font-size:12px;margin-top:2px">把人生当成一场开放世界游戏</div>
@@ -226,37 +261,57 @@ async function hardReset() {
         <span class="muted" style="font-size:12px">赞助者</span>
         <span v-for="s in ['海神唐三', 'Seastar', '清浅', '𝓛𝓾𝓬𝓲𝓯𝓮𝓻', 'Cyou2']" :key="s" class="chip" style="background:var(--eo-primary);color:#fff">{{ s }}</span>
       </div>
-      <!-- 赞助我 -->
-      <div class="sponsor-box">
-        <img src="/icons/sponsor-qr.webp" alt="赞助二维码" class="sponsor-qr" />
+      <!-- 赞助 / 更新日志：弹窗化二级入口 -->
+      <div class="row" style="gap:8px;margin-top:12px">
+        <button class="btn ghost" style="flex:1" @click="showSponsor = true"><Icon name="coins" :size="16" /> 赞助开发者</button>
+        <button class="btn ghost" style="flex:1" @click="showLog = true"><Icon name="clock" :size="16" /> 更新日志</button>
+      </div>
+    </div>
+
+    <!-- 更新日志弹窗（不再作为独立页面区块） -->
+    <Modal title="更新日志" :show="showLog" @close="showLog = false">
+      <div v-for="(c, i) in CHANGELOG" :key="c.version" class="log-item">
+        <div class="row between">
+          <div class="row" style="gap:8px">
+            <span style="font-weight:800">v{{ c.version }}</span>
+            <span v-if="i === 0" class="chip" style="background:var(--eo-primary);color:#fff">当前版本</span>
+          </div>
+          <span class="muted" style="font-size:12px">{{ c.date }}</span>
+        </div>
+        <ul class="log-list">
+          <li v-for="(it, j) in c.items" :key="j">{{ it }}</li>
+        </ul>
+      </div>
+    </Modal>
+
+    <!-- 赞助开发者弹窗 -->
+    <Modal title="赞助开发者 ☕" :show="showSponsor" @close="showSponsor = false">
+      <div style="text-align:center">
+        <img src="/icons/sponsor-qr.webp" alt="赞助二维码" class="sponsor-qr-lg" />
+        <div style="font-weight:700;margin-top:10px">如果这个项目帮到了你，欢迎请开发者喝一杯</div>
+      </div>
+      <div class="section-title" style="margin-top:14px">已赞助的伙伴</div>
+      <div class="row wrap" style="gap:6px;justify-content:center">
+        <span v-for="s in SPONSORS" :key="s" class="chip" style="background:var(--eo-primary);color:#fff">{{ s }}</span>
+      </div>
+    </Modal>
+
+    <!-- 待关注提醒弹窗（原通知中心内容） -->
+    <Modal title="待关注提醒" :show="showNotif" @close="showNotif = false">
+      <div v-for="n in reminders" :key="n.id" class="glass list-item" style="cursor:pointer" @click="goReminder(n.to)">
+        <span class="avatar" :style="n.tone === 'bad' ? 'background:rgba(196,99,76,.16);color:var(--eo-bad)' : n.tone === 'good' ? 'background:rgba(78,150,104,.16);color:var(--eo-good)' : 'background:var(--eo-chip);color:var(--eo-primary-deep)'">
+          <Icon :name="n.icon" :size="20" />
+        </span>
         <div style="flex:1;min-width:0">
-          <div style="font-weight:700">赞助开发者 ☕</div>
-          <div class="muted" style="font-size:12px;margin-top:2px">如果这个项目帮到了你，欢迎请开发者喝一杯</div>
+          <div style="font-weight:600">{{ n.title }}</div>
+          <div class="muted" style="font-size:12px">{{ n.sub }}</div>
         </div>
+        <Icon name="chevron" :size="16" />
       </div>
-    </div>
-
-    <!-- 结构化更新日志 -->
-    <div class="section-title">更新日志</div>
-    <div v-for="(c, i) in CHANGELOG" :key="c.version" class="glass card">
-      <div class="row between">
-        <div class="row" style="gap:8px">
-          <span style="font-weight:800">v{{ c.version }}</span>
-          <span v-if="i === 0" class="chip" style="background:var(--eo-primary);color:#fff">当前版本</span>
-        </div>
-        <span class="muted" style="font-size:12px">{{ c.date }}</span>
+      <div v-if="!reminders.length" class="muted" style="text-align:center;padding:30px">
+        暂无待办提醒与成就动态。<br />有任务临近截止时，这里会自动出现提醒。
       </div>
-      <ul class="log-list">
-        <li v-for="(it, j) in c.items" :key="j">{{ it }}</li>
-      </ul>
-    </div>
-
-    <div class="glass card">
-      <div style="font-size:13px;line-height:1.8">地球Online 是一个完全离线运行的个人人生记录应用：没有服务器、没有账号、没有埋点，你的每一条数据都只存在这台设备上。<button class="chip" style="margin-left:4px" @click="$router.push('/privacy')">查看隐私政策</button></div>
-    </div>
-
-    <button class="btn danger" style="width:100%;margin-top:16px" @click="hardReset"><Icon name="trash" :size="16" /> 清空全部数据</button>
-
+    </Modal>
     <!-- 编辑资料弹窗（含滚轮缩放头像裁剪） -->
     <Modal title="编辑资料" :show="showEdit" @close="showEdit = false">
       <div class="field">
@@ -280,6 +335,12 @@ async function hardReset() {
       </div>
       <button class="btn" style="width:100%" @click="saveProfile"><Icon name="checklist" :size="16" /> 保存</button>
     </Modal>
+
+    <div class="glass card" style="margin-top:16px">
+      <div style="font-size:13px;line-height:1.8">地球Online 是一个完全离线运行的个人人生记录应用：没有服务器、没有账号、没有埋点，你的每一条数据都只存在这台设备上。<button class="chip" style="margin-left:4px" @click="$router.push('/privacy')">查看隐私政策</button></div>
+    </div>
+
+    <button class="btn danger" style="width:100%;margin-top:16px" @click="hardReset"><Icon name="trash" :size="16" /> 清空全部数据</button>
   </div>
 </template>
 
@@ -289,10 +350,8 @@ async function hardReset() {
   background-size: cover; background-position: center;
   border: 1px solid var(--eo-glass-border); box-shadow: inset 0 1px 0 var(--eo-glass-hi);
 }
-.log-list { margin: 8px 0 0; padding-left: 18px; font-size: 13px; line-height: 1.9; }
-.sponsor-box {
-  display: flex; align-items: center; gap: 12px; margin-top: 12px; padding: 12px;
-  border-radius: 16px; background: var(--eo-chip);
-}
-.sponsor-qr { width: 76px; height: 76px; border-radius: 12px; object-fit: cover; background: #fff; flex: none; }
+.log-item { padding-bottom: 10px; margin-bottom: 10px; border-bottom: 1px solid var(--eo-glass-border); }
+.log-item:last-child { border-bottom: none; margin-bottom: 0; }
+.log-list { margin: 6px 0 0; padding-left: 18px; font-size: 13px; line-height: 1.9; }
+.sponsor-qr-lg { width: 168px; height: 168px; border-radius: 18px; object-fit: cover; background: #fff; box-shadow: var(--eo-shadow-soft); }
 </style>

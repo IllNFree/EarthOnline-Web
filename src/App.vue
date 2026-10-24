@@ -49,7 +49,6 @@ const sideGroups = [
     { name: 'stats', icon: 'chart', label: '数据中心' }
   ] },
   { label: '系统', items: [
-    { name: 'notifications', icon: 'bell', label: '通知' },
     { name: 'trash', icon: 'trash', label: '回收站' },
     { name: 'settings', icon: 'settings', label: '设置' }
   ] }
@@ -131,9 +130,8 @@ onUnmounted(() => {
         </button>
       </template>
     </nav>
-    <div class="side-foot row between">
+    <div class="side-foot">
       <span class="muted">v1.0.6 · 双端自适应</span>
-      <button class="muted" style="font-size:11px" @click="routerPush('/privacy')">隐私政策</button>
     </div>
   </aside>
 

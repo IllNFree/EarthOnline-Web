@@ -1,26 +1,83 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <defs>
+    <!-- 背景暖琥珀渐变 -->
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#E3BE97"/>
-      <stop offset="1" stop-color="#B08553"/>
+      <stop offset="0" stop-color="#F2DCC0"/>
+      <stop offset=".5" stop-color="#D8A878"/>
+      <stop offset="1" stop-color="#A5763F"/>
     </linearGradient>
-    <linearGradient id="gl" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#FFFDF8" stop-opacity=".55"/>
-      <stop offset="1" stop-color="#FFFDF8" stop-opacity="0"/>
+    <!-- 左上玻璃光源 -->
+    <radialGradient id="glow" cx=".28" cy=".2" r=".85">
+      <stop offset="0" stop-color="#FFF7EA" stop-opacity=".9"/>
+      <stop offset=".5" stop-color="#FFF7EA" stop-opacity=".18"/>
+      <stop offset="1" stop-color="#FFF7EA" stop-opacity="0"/>
+    </radialGradient>
+    <!-- 球体主体：奶白→暖沙→边缘焦糖 -->
+    <radialGradient id="sph" cx=".34" cy=".28" r="1">
+      <stop offset="0" stop-color="#FFFDF6"/>
+      <stop offset=".45" stop-color="#F6EBD7"/>
+      <stop offset=".8" stop-color="#E4CFAE"/>
+      <stop offset="1" stop-color="#CBB18A"/>
+    </radialGradient>
+    <!-- 球体右下内阴影 -->
+    <radialGradient id="shd" cx=".3" cy=".26" r="1.05">
+      <stop offset=".55" stop-color="#7A5A33" stop-opacity="0"/>
+      <stop offset="1" stop-color="#7A5A33" stop-opacity=".38"/>
+    </radialGradient>
+    <!-- 高光 -->
+    <radialGradient id="spec" cx=".5" cy=".5" r=".5">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity=".95"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+    <!-- 大陆 -->
+    <linearGradient id="land" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#9DB48F"/>
+      <stop offset="1" stop-color="#71906C"/>
     </linearGradient>
+    <clipPath id="clip"><circle cx="256" cy="246" r="150"/></clipPath>
+    <filter id="blur8" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="8"/></filter>
+    <filter id="blur18" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="18"/></filter>
   </defs>
-  <rect x="16" y="16" width="480" height="480" rx="116" fill="url(#bg)"/>
-  <rect x="16" y="16" width="480" height="480" rx="116" fill="url(#gl)"/>
-  <rect x="16" y="16" width="480" height="480" rx="116" fill="none" stroke="#FFFFFF" stroke-opacity=".28" stroke-width="6"/>
-  <circle cx="256" cy="256" r="150" fill="#FBF6EE"/>
-  <g fill="none" stroke="#B08553" stroke-opacity=".55" stroke-width="10">
-    <ellipse cx="256" cy="256" rx="66" ry="150"/>
-    <path d="M112 256h288"/>
-    <path d="M126 182h260M126 330h260"/>
+
+  <!-- 底板 -->
+  <rect x="16" y="16" width="480" height="480" rx="118" fill="url(#bg)"/>
+  <rect x="16" y="16" width="480" height="480" rx="118" fill="url(#glow)"/>
+  <rect x="22" y="22" width="468" height="468" rx="112" fill="none" stroke="#FFFFFF" stroke-opacity=".34" stroke-width="5"/>
+  <rect x="16" y="16" width="480" height="480" rx="118" fill="none" stroke="#5E421E" stroke-opacity=".12" stroke-width="3"/>
+
+  <!-- 球体投影 -->
+  <ellipse cx="256" cy="416" rx="128" ry="26" fill="#5E421E" opacity=".28" filter="url(#blur18)"/>
+
+  <!-- 玻璃球体 -->
+  <circle cx="256" cy="246" r="150" fill="url(#sph)"/>
+  <g clip-path="url(#clip)">
+    <!-- 大陆（有机形状） -->
+    <g fill="url(#land)">
+      <path d="M150 148c26-18 62-24 88-10 24 12 22 40 4 54-16 12-44 10-56 26-10 14 2 30-10 42-14 14-40 8-50-10-14-26-6-78 24-102z"/>
+      <path d="M300 210c30-14 70-2 84 26 12 26-2 52-26 62-20 8-40-2-50-20-12-22-30-54-8-68z"/>
+      <path d="M196 300c20-8 44 2 48 22 4 22-14 38-34 38-22 0-40-18-36-38 2-10 10-18 22-22z"/>
+      <path d="M330 150c14-6 30 0 34 14 4 12-4 24-18 26-14 2-28-6-30-18-2-10 4-18 14-22z"/>
+    </g>
+    <!-- 经纬线 -->
+    <g fill="none" stroke="#8A6A3F" stroke-opacity=".28" stroke-width="6">
+      <ellipse cx="256" cy="246" rx="64" ry="150"/>
+      <path d="M106 246h300"/>
+      <path d="M120 174h272M120 318h272"/>
+    </g>
+    <!-- 球体内阴影 -->
+    <circle cx="256" cy="246" r="150" fill="url(#shd)"/>
   </g>
-  <g fill="#7E9B7B" opacity=".9">
-    <path d="M212 168c36-14 74 12 66 40s-56 40-88 22-22-48 22-62z"/>
-    <path d="M282 258c46-8 88 26 70 66-14 34-68 40-94 16s-10-76 24-82z"/>
+
+  <!-- 玻璃斜向高光条 -->
+  <g clip-path="url(#clip)" opacity=".5">
+    <path d="M96 300 210 76l58 30L154 330z" fill="#FFFFFF" opacity=".16" filter="url(#blur8)"/>
   </g>
-  <path d="M140 372c30-18 62-18 92 0s62 18 92 0" fill="none" stroke="#D4A373" stroke-width="14" stroke-linecap="round" opacity=".65"/>
+
+  <!-- 主高光斑 -->
+  <ellipse cx="196" cy="160" rx="64" ry="44" fill="url(#spec)" transform="rotate(-24 196 160)"/>
+
+  <!-- 右下边缘环境反光 -->
+  <path d="M348 356a150 150 0 0 0 52-88" fill="none" stroke="#FFF3DC" stroke-opacity=".8" stroke-width="10" stroke-linecap="round" filter="url(#blur8)"/>
+  <!-- 球缘描边 -->
+  <circle cx="256" cy="246" r="150" fill="none" stroke="#FFFFFF" stroke-opacity=".4" stroke-width="4"/>
 </svg>
