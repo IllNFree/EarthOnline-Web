@@ -335,6 +335,9 @@ input, textarea, select { font-family: inherit; color: inherit; }
   .cols-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; align-items: start; }
   .cols-2 > .glass { margin-bottom: 0; }
   .home-lower { position: relative; display: grid; grid-template-columns: 2fr 1fr; gap: 14px; align-items: stretch; }
+  /* 左栏 flex 列：日历卡撑满 min-height（大/中/小可调），保证与右栏水平线对齐 */
+  .home-left { display: flex; flex-direction: column; min-height: 0; }
+  .home-left > .glass { flex: 1 1 auto; min-height: 0; }
   .home-right { display: flex; flex-direction: column; gap: 14px; min-height: 0; }
   /* 右栏卡片与左栏等高：时间轴/动态数据过多时内部滚动，绝不无限撑高 */
   .home-right > .glass { flex: 1 1 0; min-height: 140px; overflow-y: auto; }

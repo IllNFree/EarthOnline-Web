@@ -143,6 +143,15 @@ const selTasks = computed(() => dueMap.value[selDay.value] || [])
 function calShift(n) { const d = new Date(calBase.value); d.setMonth(d.getMonth() + n); calBase.value = d }
 function pickDay(c) { selDay.value = c.key }
 
+// ---- 日历高度调节：右上角「大/中/小」胶囊切换（记忆选择），同行右栏随 align-items:stretch 自动对齐 ----
+const CAL_SIZES = { '小': '330px', '中': '410px', '大': '500px' }
+const calSize = ref(localStorage.getItem('eo-cal-size') || '中')
+const calMinH = computed(() => CAL_SIZES[calSize.value] || '410px')
+function setCalSize(s) {
+  calSize.value = s
+  try { localStorage.setItem('eo-cal-size', s) } catch { /* 隐私模式忽略 */ }
+}
+
 const life = computed(() => getLifeStats(store.data.birthDate))
 const stage = computed(() => growthStageOf(store.xp))
 const greeting = computed(() => {
@@ -359,11 +368,16 @@ function onPointerUp(e) {
       <div class="home-resizer" :style="{ left: homeLeftPct }" @pointerdown="onResizeDown" title="拖拽调节左右宽度"></div>
       <div class="home-left">
         <div class="section-title">日历 · 任务</div>
-        <div class="glass card">
+        <div class="glass card cal-card" :style="{ '--cal-h': calMinH }">
           <div class="row between" style="margin-bottom:8px">
-            <button class="btn ghost" style="padding:6px 12px" @click="calShift(-1)"><Icon name="chevron" :size="16" style="transform:rotate(180deg)" /></button>
-            <span style="font-weight:700">{{ calTitle }}</span>
-            <button class="btn ghost" style="padding:6px 12px" @click="calShift(1)"><Icon name="chevron" :size="16" /></button>
+            <div class="row" style="gap:6px">
+              <button class="btn ghost" style="padding:6px 12px" @click="calShift(-1)"><Icon name="chevron" :size="16" style="transform:rotate(180deg)" /></button>
+              <span style="font-weight:700">{{ calTitle }}</span>
+              <button class="btn ghost" style="padding:6px 12px" @click="calShift(1)"><Icon name="chevron" :size="16" /></button>
+            </div>
+            <div class="cal-size-capsule" title="调节日历卡高度">
+              <button v-for="(h, s) in CAL_SIZES" :key="s" class="cs-btn" :class="{ on: calSize === s }" @click="setCalSize(s)">{{ s }}</button>
+            </div>
           </div>
           <div class="cal-week">
             <span v-for="w in WEEK" :key="w" class="muted">{{ w }}</span>
@@ -375,19 +389,21 @@ function onPointerUp(e) {
               <i v-if="c.due" class="cal-dot"></i>
             </button>
           </div>
-          <div class="row between" style="margin-top:10px">
-            <span class="muted" style="font-size:13px">{{ selDay === todayKey ? '今日待办' : selDay + ' 截止' }}</span>
-            <span class="chip" v-if="selTasks.length">{{ selTasks.length }} 项</span>
-          </div>
-          <div v-if="selTasks.length">
-            <div v-for="t in selTasks" :key="t.id" class="row" style="padding:7px 0;border-top:1px solid var(--eo-glass-border)">
-              <Icon name="checklist" :size="16" />
-              <span style="font-size:14px;flex:1" :style="t.status === 'done' ? 'text-decoration:line-through;opacity:.6' : ''">{{ t.title }}</span>
-              <span class="chip">{{ statusLabelOf(t.status) }}</span>
+          <div class="cal-foot">
+            <div class="row between" style="margin-top:10px">
+              <span class="muted" style="font-size:13px">{{ selDay === todayKey ? '今日待办' : selDay + ' 截止' }}</span>
+              <span class="chip" v-if="selTasks.length">{{ selTasks.length }} 项</span>
             </div>
-            <button class="btn ghost" style="width:100%;margin-top:8px" @click="openQuick('task')"><Icon name="plus" :size="16" /> 新建任务</button>
+            <div v-if="selTasks.length">
+              <div v-for="t in selTasks" :key="t.id" class="row" style="padding:7px 0;border-top:1px solid var(--eo-glass-border)">
+                <Icon name="checklist" :size="16" />
+                <span style="font-size:14px;flex:1" :style="t.status === 'done' ? 'text-decoration:line-through;opacity:.6' : ''">{{ t.title }}</span>
+                <span class="chip">{{ statusLabelOf(t.status) }}</span>
+              </div>
+              <button class="btn ghost" style="width:100%;margin-top:8px" @click="openQuick('task')"><Icon name="plus" :size="16" /> 新建任务</button>
+            </div>
+            <div v-else class="muted" style="font-size:13px;padding:8px 0">该日暂无截止任务，点击日历日期查看其他天。</div>
           </div>
-          <div v-else class="muted" style="font-size:13px;padding:8px 0">该日暂无截止任务，点击日历日期查看其他天。</div>
         </div>
       </div>
 
@@ -494,6 +510,26 @@ function onPointerUp(e) {
   width: 4px; height: 4px; border-radius: 50%; background: var(--eo-primary-deep);
 }
 .cal-cell.sel .cal-dot { background: #fff; }
+
+/* 日历卡：高度可调（大/中/小）——桌面端撑满 min-height，右栏卡片随 grid stretch 自动对齐 */
+.cal-card { display: flex; flex-direction: column; }
+.cal-foot { flex: 1; min-height: 0; }
+.cal-size-capsule {
+  display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px;
+  background: var(--eo-chip); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+.cs-btn {
+  padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+  color: var(--eo-ink-soft); transition: background .15s ease, color .15s ease, box-shadow .15s ease;
+}
+.cs-btn:hover { color: var(--eo-ink); }
+.cs-btn.on {
+  background: linear-gradient(135deg, var(--eo-primary), var(--eo-primary-deep)); color: #fff;
+  box-shadow: 0 2px 8px -2px rgba(176, 133, 83, 0.55);
+}
+@media (min-width: 900px) {
+  .cal-card { min-height: var(--cal-h, 410px); }
+}
 
 /* 卡片堆叠：真 3D 景深层叠（后方卡片向下露边）+ 拖拽 */
 .stack-wrap { margin: 0 0 4px; position: relative; perspective: 1100px; }

@@ -268,19 +268,21 @@ async function hardReset() {
       </div>
     </div>
 
-    <!-- 更新日志弹窗（不再作为独立页面区块） -->
+    <!-- 更新日志弹窗（独立 60vh 滚动容器：版本块紧凑排列，滚轮连续长滚动） -->
     <Modal title="更新日志" :show="showLog" @close="showLog = false">
-      <div v-for="(c, i) in CHANGELOG" :key="c.version" class="log-item">
-        <div class="row between">
-          <div class="row" style="gap:8px">
-            <span style="font-weight:800">v{{ c.version }}</span>
-            <span v-if="i === 0" class="chip" style="background:var(--eo-primary);color:#fff">当前版本</span>
+      <div class="log-scroll">
+        <div v-for="(c, i) in CHANGELOG" :key="c.version" class="log-item">
+          <div class="row between">
+            <div class="row" style="gap:8px">
+              <span style="font-weight:800">v{{ c.version }}</span>
+              <span v-if="i === 0" class="chip" style="background:var(--eo-primary);color:#fff">当前版本</span>
+            </div>
+            <span class="muted" style="font-size:12px">{{ c.date }}</span>
           </div>
-          <span class="muted" style="font-size:12px">{{ c.date }}</span>
+          <ul class="log-list">
+            <li v-for="(it, j) in c.items" :key="j">{{ it }}</li>
+          </ul>
         </div>
-        <ul class="log-list">
-          <li v-for="(it, j) in c.items" :key="j">{{ it }}</li>
-        </ul>
       </div>
     </Modal>
 
@@ -351,8 +353,18 @@ async function hardReset() {
   background-size: cover; background-position: center;
   border: 1px solid var(--eo-glass-border); box-shadow: inset 0 1px 0 var(--eo-glass-hi);
 }
-.log-item { padding-bottom: 10px; margin-bottom: 10px; border-bottom: 1px solid var(--eo-glass-border); }
-.log-item:last-child { border-bottom: none; margin-bottom: 0; }
-.log-list { margin: 6px 0 0; padding-left: 18px; font-size: 13px; line-height: 1.9; }
+/* 更新日志：固定高度滚动容器 + 细窄滚动条，版本块紧凑排列不被拉伸 */
+.log-scroll {
+  max-height: 60vh; overflow-y: auto; overscroll-behavior: contain;
+  padding: 2px 6px 2px 2px;
+  scrollbar-width: thin; scrollbar-color: rgba(176, 133, 83, 0.45) transparent;
+}
+.log-scroll::-webkit-scrollbar { width: 5px; }
+.log-scroll::-webkit-scrollbar-track { background: transparent; }
+.log-scroll::-webkit-scrollbar-thumb { background: rgba(176, 133, 83, 0.4); border-radius: 999px; }
+.log-scroll::-webkit-scrollbar-thumb:hover { background: rgba(176, 133, 83, 0.65); }
+.log-item { flex: none; min-height: 0; padding-bottom: 12px; margin-bottom: 12px; border-bottom: 1px dashed var(--eo-glass-border); }
+.log-item:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 2px; }
+.log-list { margin: 6px 0 0; padding-left: 18px; font-size: 13px; line-height: 1.85; }
 .sponsor-qr-lg { width: 168px; height: 168px; border-radius: 18px; object-fit: cover; background: #fff; box-shadow: var(--eo-shadow-soft); }
 </style>
