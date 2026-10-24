@@ -23,14 +23,36 @@ onMounted(async () => {
     await loadAMap()
     mapCtl = await mountMap(mapEl.value)
     mapCtl.onPick((ll) => {
-      // 点击地图空白处：立即隐藏搜索结果列表，防止遮挡底部足迹列表（需求 #13）
-      results.value = []
+      // 搜索状态下点击地图空白处 = 直接退出搜索状态（需求：无需点 X）
+      if (results.value.length || searching.value) {
+        results.value = []
+        searching.value = false
+        return
+      }
       pick.value = ll
       form.value.name = form.value.name || '我的足迹'
     })
   } catch (e) { loadErr.value = e.message || '地图加载失败' }
 })
 onUnmounted(() => { if (mapCtl) mapCtl.destroy() })
+
+// 点击地图/结果以外的页面空白处，同样退出搜索状态
+function onBlankClick(e) {
+  if (!results.value.length && !searching.value) return
+  if (e.target && e.target.closest && (e.target.closest('.capsule') || e.target.closest('.map-results'))) return
+  results.value = []
+  searching.value = false
+}
+// 全局 Esc：有搜索结果时消费事件（阻止页面返回），仅退出搜索
+function onEsc(e) {
+  if (results.value.length || searching.value) {
+    results.value = []
+    searching.value = false
+    e.preventDefault()
+  }
+}
+onMounted(() => document.addEventListener('eo-esc', onEsc))
+onUnmounted(() => document.removeEventListener('eo-esc', onEsc))
 
 async function doSearch() {
   if (!query.value.trim()) return
@@ -65,14 +87,15 @@ async function removeLoc(id) {
 </script>
 
 <template>
-  <div class="page wide" style="padding:0">
+  <div class="page wide" style="padding:0" @click="onBlankClick">
     <div style="position:relative;height:42vh;margin:0">
       <div ref="mapEl" style="width:100%;height:100%;border-radius:0 0 22px 22px;overflow:hidden"></div>
       <div v-if="loadErr" class="glass card" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;margin:0">{{ loadErr }}</div>
+      <!-- 搜索框：点击即输入，回车搜索（去除多余搜索按钮） -->
       <div class="capsule" style="position:absolute;left:12px;right:12px;top:12px;z-index:5;background:var(--eo-glass-strong)">
         <Icon name="search" :size="18" />
-        <input v-model="query" placeholder="搜索地点（如：西湖）" @keyup.enter="doSearch" />
-        <button class="btn" style="padding:6px 12px" @click="doSearch"><Icon name="search" :size="16" /></button>
+        <input ref="searchInput" v-model="query" placeholder="搜索地点（如：西湖）" @keyup.enter="doSearch" />
+        <button v-if="query" class="ghost-btn" style="padding:4px" title="清空" @click.stop="query = ''; results = []"><Icon name="x" :size="16" /></button>
       </div>
       <!-- 搜索结果：紧贴搜索框正下方（需求 #13），右上 X 可关闭 -->
       <div v-if="searching || results.length" class="map-results">

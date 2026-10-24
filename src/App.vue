@@ -4,12 +4,14 @@ import { useRoute, useRouter } from 'vue-router'
 import { motion, AnimatePresence } from 'motion-v'
 import { useMediaQuery } from '@vueuse/core'
 import { useAppStore } from './stores/app.js'
+import { useDialogStore } from './stores/dialog.js'
 import { routeVariants } from './lib/motion.js'
 import { xpLevelInfo } from './lib/model.js'
 import Icon from './components/Icon.vue'
 import GlassDialog from './components/GlassDialog.vue'
 
 const store = useAppStore()
+const dialog = useDialogStore()
 const route = useRoute()
 const routerPush = useRouter().push
 const level = computed(() => xpLevelInfo(store.xp))
@@ -69,6 +71,9 @@ function dismissInstall() { store.installPrompt = null }
 
 let mq
 let spotlightHandler = null
+// 主 Tab 路由（Esc 返回逻辑中的「非二级页」）
+const MAIN_PATHS = ['/', '/tasks', '/backpack', '/notes', '/settings']
+let escHandler = null
 onMounted(() => {
   // 移除内联启动屏（消除首访白屏闪烁）
   const sp = document.getElementById('eo-splash')
@@ -86,10 +91,25 @@ onMounted(() => {
     el.style.setProperty('--my', (e.clientY - r.top) + 'px')
   }
   document.addEventListener('pointermove', spotlightHandler, { passive: true })
+  // 全局 Esc：① 关全局确认弹窗 ② 广播 eo-esc（弹窗/搜索等组件自行消费） ③ 二级页返回上一页
+  escHandler = (e) => {
+    if (e.key !== 'Escape') return
+    if (dialog.open) { dialog.close(false); return }
+    const ev = new CustomEvent('eo-esc')
+    document.dispatchEvent(ev)
+    if (ev.defaultPrevented) return // 有组件消费（如关闭弹窗/搜索）
+    const p = route.path
+    if (!MAIN_PATHS.includes(p)) {
+      if (window.history.state && window.history.state.back != null) routerPush(window.history.state.back)
+      else routerPush('/')
+    }
+  }
+  document.addEventListener('keydown', escHandler)
 })
 onUnmounted(() => {
   mq && mq.removeEventListener && mq.removeEventListener('change', () => {})
   if (spotlightHandler) document.removeEventListener('pointermove', spotlightHandler)
+  if (escHandler) document.removeEventListener('keydown', escHandler)
 })
 </script>
 
@@ -117,7 +137,7 @@ onUnmounted(() => {
       </span>
     </button>
     <div class="side-brand">
-      <span class="side-logo"><Icon name="globe" :size="22" /></span>
+      <span class="side-logo"><img src="/icons/icon.svg" alt="" style="width:100%;height:100%;display:block" /></span>
       <span>地球Online</span>
     </div>
     <nav class="side-nav">

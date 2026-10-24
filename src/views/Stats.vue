@@ -1,6 +1,6 @@
 <script setup>
-// 数据中心：概览统计 + 14 日任务完成趋势 + 记账月度柱状 + 年报
-import { computed } from 'vue'
+// 数据中心：等级概览 + 六宫格 + 周期报告（日报/周报/年报合一，任务与记账整合）+ 趋势图
+import { ref, computed } from 'vue'
 import { useAppStore } from '../stores/app.js'
 import { todayStr, xpLevelInfo } from '../lib/model.js'
 import Icon from '../components/Icon.vue'
@@ -18,6 +18,113 @@ const overview = computed(() => ([
   { icon: 'map-pin', label: '足迹', value: store.data.locations.length, sub: '个地点' },
   { icon: 'trophy', label: '成就', value: store.data.achievements.length, sub: store.xp + ' XP' }
 ]))
+
+// ================= 周期报告（日报 / 周报 / 年报 合一面板） =================
+const period = ref('daily')
+const PERIODS = [
+  { key: 'daily', label: '日报', icon: 'calendar' },
+  { key: 'weekly', label: '周报', icon: 'chart' },
+  { key: 'yearly', label: '年报', icon: 'calendar' }
+]
+
+// 区间工具
+function inRange(dateStr, from, to) { return dateStr && dateStr >= from && dateStr <= to }
+function rangeFor(key) {
+  if (key === 'daily') { return { from: today, to: today } }
+  if (key === 'weekly') {
+    const d = new Date(); d.setDate(d.getDate() - 6)
+    return { from: todayStr(d), to: today }
+  }
+  const y = new Date().getFullYear()
+  return { from: y + '-01-01', to: y + '-12-31' }
+}
+// 聚合一个区间的任务/笔记/照片/足迹/记账
+function aggregate(from, to) {
+  const a = {
+    tasksDone: 0, memos: 0, photos: 0, locations: 0, ledRecords: 0,
+    income: 0, expense: 0, xp: 0
+  }
+  store.data.tasks.forEach((t) => { if (t.status === 'done' && inRange((t.doneAt || '').slice(0, 10), from, to)) { a.tasksDone++; a.xp += 10 } })
+  store.data.memos.forEach((m) => { if (inRange(m.createdAt, from, to)) { a.memos++; a.xp += 5 } })
+  store.data.photos.forEach((p) => { if (inRange(p.createdAt, from, to)) { a.photos++; a.xp += 8 } })
+  store.data.locations.forEach((l) => { if (inRange(l.date, from, to)) { a.locations++; a.xp += 8 } })
+  store.data.ledger.records.forEach((r) => {
+    if (!inRange(r.date, from, to)) return
+    a.ledRecords++
+    a.xp += 2
+    if (r.type === 'income') a.income += r.amount; else a.expense += r.amount
+  })
+  a.balance = a.income - a.expense
+  a.total = a.tasksDone + a.memos + a.photos + a.locations + a.ledRecords
+  return a
+}
+const report = computed(() => {
+  const key = period.value
+  const { from, to } = rangeFor(key)
+  const agg = aggregate(from, to)
+  // 活跃度分布：日报=近 24 小时（按记录时间戳，缺时间戳的归入「今天」）；周报=7 天；年报=12 个月
+  let bars = [], title = '', subtitle = ''
+  if (key === 'daily') {
+    title = '今日活跃分布'
+    subtitle = today
+    for (let h = 0; h < 24; h++) bars.push({ label: h % 6 === 0 ? String(h) : '', v: 0 })
+    const bump = (ts) => {
+      if (!ts) return
+      const m = String(ts).match(/T(\d{2}):/)
+      if (m) { const h = Number(m[1]); if (bars[h]) bars[h].v++ ; return }
+      // 无时间戳：按「有记录」计在当前小时
+      const h = new Date().getHours(); if (bars[h]) bars[h].v++
+    }
+    store.data.tasks.forEach((t) => { if (t.status === 'done' && (t.doneAt || '').slice(0, 10) === today) bump(t.doneAt) })
+    store.data.memos.forEach((m) => { if (m.createdAt === today) bump(m.createdAt + 'T' + new Date().getHours() + ':00') })
+    store.data.photos.forEach((p) => { if (p.createdAt === today) bump(p.createdAt + 'T' + new Date().getHours() + ':00') })
+    store.data.locations.forEach((l) => { if (l.date === today) bump(l.date + 'T' + new Date().getHours() + ':00') })
+    store.data.ledger.records.forEach((r) => { if (r.date === today) bump(r.createdAt || r.date) })
+  } else if (key === 'weekly') {
+    title = '近 7 天活跃分布'
+    const days = []
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(); d.setDate(d.getDate() - i)
+      const k = todayStr(d)
+      const v = aggregate(k, k).total
+      days.push({ label: i === 0 ? '今天' : p2(d.getMonth() + 1) + '/' + p2(d.getDate()), v })
+    }
+    bars = days
+  } else {
+    title = new Date().getFullYear() + ' 年逐月活跃分布'
+    subtitle = new Date().getFullYear() + ' 年'
+    const y = new Date().getFullYear()
+    const months = []
+    for (let m = 1; m <= 12; m++) {
+      const mk = y + '-' + p2(m)
+      const from = mk + '-01', to = mk + '-31'
+      months.push({ label: String(m), v: aggregate(from, to).total })
+    }
+    bars = months
+  }
+  const maxV = Math.max(1, ...bars.map((b) => b.v))
+  // 一句话总结（覆盖任务/笔记/照片/足迹/记账 全部数据）
+  let summary = ''
+  if (!agg.total) {
+    summary = key === 'daily' ? '今天还没有任何记录，写下第一条吧！' : (key === 'weekly' ? '本周还没有记录，从今天开始积累。' : '今年还没有记录，人生游戏正等你开局。')
+  } else {
+    const parts = []
+    if (agg.tasksDone) parts.push('完成任务 ' + agg.tasksDone + ' 个')
+    if (agg.memos) parts.push('笔记 ' + agg.memos + ' 篇')
+    if (agg.photos) parts.push('照片 ' + agg.photos + ' 张')
+    if (agg.locations) parts.push('足迹 ' + agg.locations + ' 处')
+    if (agg.ledRecords) parts.push('记账 ' + agg.ledRecords + ' 笔')
+    const ledPart = (agg.income || agg.expense) ? '，收入 ' + agg.income.toFixed(0) + ' 元 / 支出 ' + agg.expense.toFixed(0) + ' 元' : ''
+    if (key === 'daily') summary = '今天共 ' + agg.total + ' 次记录' + (parts.length ? '：' + parts.join('、') : '') + ledPart + '。'
+    else {
+      const top = bars.reduce((a, b) => (b.v > a.v ? b : a), bars[0])
+      const topLabel = key === 'weekly' ? (top.label === '今天' ? '今天' : top.label) : top.label + ' 月'
+      summary = (key === 'weekly' ? '本周' : '今年') + '共 ' + agg.total + ' 次记录，最活跃的是 ' + topLabel + (parts.length ? '。' + parts.join('、') : '') + ledPart + '。'
+    }
+  }
+  const rangeLabel = key === 'daily' ? today : (key === 'weekly' ? from + ' ~ ' + to : new Date().getFullYear() + ' 年')
+  return { key, rangeLabel, agg, bars, maxV, title, summary }
+})
 
 // 近 14 日：每日新建/完成任务数
 const trend = computed(() => {
@@ -51,57 +158,6 @@ const ledgerMonths = computed(() => {
   return out
 })
 const ledMax = computed(() => Math.max(1, ...ledgerMonths.value.map((m) => Math.max(m.inc, m.exp))))
-
-// 日报：今日概览（需求：补日报）
-const daily = computed(() => {
-  const tasksDone = store.data.tasks.filter((t) => t.doneAt && t.doneAt.slice(0, 10) === today).length
-  const memos = store.data.memos.filter((m) => m.createdAt === today).length
-  const photos = store.data.photos.filter((p) => p.createdAt === today).length
-  let inc = 0, exp = 0
-  store.data.ledger.records.forEach((r) => {
-    if (r.date !== today) return
-    if (r.type === 'income') inc += r.amount; else exp += r.amount
-  })
-  return { tasksDone, memos, photos, income: inc, expense: exp, balance: inc - exp }
-})
-
-// 周报：近 7 日逐日任务/笔记/记账（需求：补周报）
-const weekly = computed(() => {
-  const days = []
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date(); d.setDate(d.getDate() - i)
-    const key = todayStr(d)
-    let inc = 0, exp = 0
-    store.data.ledger.records.forEach((r) => {
-      if (r.date !== key) return
-      if (r.type === 'income') inc += r.amount; else exp += r.amount
-    })
-    days.push({
-      key, label: i === 0 ? '今天' : p2(d.getMonth() + 1) + '/' + p2(d.getDate()),
-      done: store.data.tasks.filter((t) => t.doneAt && t.doneAt.slice(0, 10) === key).length,
-      memos: store.data.memos.filter((m) => m.createdAt === key).length,
-      net: inc - exp
-    })
-  }
-  return days
-})
-const weekMax = computed(() => Math.max(1, ...weekly.value.map((d) => Math.abs(d.net)), ...weekly.value.map((d) => d.done + d.memos)))
-
-// 年报：本年度聚合
-const yearReport = computed(() => {
-  const y = new Date().getFullYear()
-  const inYear = (s) => s && String(s).startsWith(String(y))
-  const led = { inc: 0, exp: 0 }
-  store.data.ledger.records.forEach((r) => { if (inYear(r.date)) { if (r.type === 'income') led.inc += r.amount; else led.exp += r.amount } })
-  return {
-    year: y,
-    tasksDone: store.data.tasks.filter((t) => t.doneAt && inYear(t.doneAt.slice(0, 10))).length,
-    memos: store.data.memos.filter((m) => inYear(m.createdAt)).length,
-    photos: store.data.photos.filter((p) => inYear(p.createdAt)).length,
-    footprints: store.data.locations.filter((l) => inYear(l.date)).length,
-    ledIncome: led.inc, ledExpense: led.exp
-  }
-})
 </script>
 
 <template>
@@ -130,42 +186,56 @@ const yearReport = computed(() => {
       </div>
     </div>
 
-    <!-- 日报：今日概览 -->
-    <div class="section-title">今日概览（日报）</div>
+    <!-- 周期报告：日报 / 周报 / 年报 合一面板（任务 + 记账整合） -->
+    <div class="section-title">周期报告</div>
     <div class="glass card">
-      <div class="grid3" style="text-align:center">
-        <div><div class="muted" style="font-size:12px">完成任务</div><div style="font-weight:800;font-size:18px">{{ daily.tasksDone }}</div></div>
-        <div><div class="muted" style="font-size:12px">写下笔记</div><div style="font-weight:800;font-size:18px">{{ daily.memos }}</div></div>
-        <div><div class="muted" style="font-size:12px">存入照片</div><div style="font-weight:800;font-size:18px">{{ daily.photos }}</div></div>
+      <div class="capsule pr-tabs">
+        <button v-for="pd in PERIODS" :key="pd.key" class="btn ghost pr-tab"
+          :style="period === pd.key ? 'background:var(--eo-primary);color:#fff' : ''" @click="period = pd.key">
+          {{ pd.label }}
+        </button>
       </div>
-      <div class="row between" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--eo-glass-border);font-size:13px">
-        <span class="muted">今日收支</span>
-        <span class="row" style="gap:10px">
-          <b style="color:var(--eo-good)">+{{ daily.income.toFixed(2) }}</b>
-          <b style="color:var(--eo-bad)">-{{ daily.expense.toFixed(2) }}</b>
-          <b>结余 {{ daily.balance.toFixed(2) }}</b>
-        </span>
-      </div>
-    </div>
 
-    <!-- 周报：近 7 日 -->
-    <div class="section-title">近 7 日回顾（周报）</div>
-    <div class="glass card">
-      <div class="chart-row">
-        <div v-for="d in weekly" :key="d.key" class="chart-col">
-          <div class="chart-bars">
-            <i class="b-done" :style="{ height: (d.done / weekMax * 56) + 'px' }" :title="d.done + ' 任务完成'"></i>
-            <i class="b-memo" :style="{ height: (d.memos / weekMax * 56) + 'px' }" :title="d.memos + ' 笔记'"></i>
-            <i :class="d.net >= 0 ? 'b-inc' : 'b-exp'" :style="{ height: (Math.abs(d.net) / weekMax * 56) + 'px' }" :title="'收支净额 ' + d.net.toFixed(0)"></i>
-          </div>
-          <span class="muted">{{ d.label }}</span>
+      <div class="row between" style="margin-top:12px">
+        <span class="row" style="gap:8px;font-weight:800;font-size:15px">
+          <span class="avatar" style="width:30px;height:30px;background:var(--eo-chip);color:var(--eo-primary-deep)"><Icon name="calendar" :size="16" /></span>
+          {{ report.key === 'daily' ? '日报' : (report.key === 'weekly' ? '周报' : '年报') }}
+        </span>
+        <span class="muted" style="font-size:12px">{{ report.rangeLabel }}</span>
+      </div>
+
+      <!-- 四宫格指标：任务 + 记账整合 -->
+      <div class="pr-grid">
+        <div class="pr-tile"><b>{{ report.agg.tasksDone }}</b><span>完成任务</span><i>+10/个</i></div>
+        <div class="pr-tile"><b>{{ report.agg.memos }}</b><span>新增灵感</span><i>+5/条</i></div>
+        <div class="pr-tile"><b>{{ report.agg.photos + report.agg.locations }}</b><span>影像足迹</span><i>+8/处</i></div>
+        <div class="pr-tile">
+          <b :style="'color:' + (report.agg.balance >= 0 ? 'var(--eo-good)' : 'var(--eo-bad)')">{{ report.agg.balance.toFixed(0) }}</b>
+          <span>收支结余</span>
+          <i>+{{ report.agg.income.toFixed(0) }} / -{{ report.agg.expense.toFixed(0) }}</i>
         </div>
       </div>
-      <div class="row" style="gap:14px;margin-top:8px;font-size:12px">
-        <span class="row" style="gap:5px"><i class="dot" style="background:var(--eo-primary)"></i>完成任务</span>
-        <span class="row" style="gap:5px"><i class="dot" style="background:#9A8FB0"></i>笔记</span>
-        <span class="row" style="gap:5px"><i class="dot" style="background:var(--eo-good)"></i>收大于支</span>
-        <span class="row" style="gap:5px"><i class="dot" style="background:var(--eo-bad)"></i>支大于收</span>
+      <div class="row between" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--eo-glass-border);font-size:13px">
+        <span class="muted">获得经验值</span>
+        <b style="color:var(--eo-primary-deep)">+{{ report.agg.xp }} XP</b>
+      </div>
+
+      <!-- 活跃度分布（适配全部数据类型，含记账） -->
+      <div style="font-weight:700;margin-top:14px">{{ report.title }}</div>
+      <div class="chart-row">
+        <div v-for="(b, i) in report.bars" :key="i" class="chart-col">
+          <div class="chart-bars"><i class="b-act" :style="{ height: (b.v / report.maxV * 64) + 'px' }" :title="b.v + ' 次记录'"></i></div>
+          <span class="muted">{{ b.label }}</span>
+        </div>
+      </div>
+
+      <!-- 一句话总结 -->
+      <div class="pr-summary">
+        <span class="pr-dot"></span>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:700;font-size:13px">一句话总结</div>
+          <div class="muted" style="font-size:13px;margin-top:2px;line-height:1.7">{{ report.summary }}</div>
+        </div>
       </div>
     </div>
 
@@ -205,34 +275,38 @@ const yearReport = computed(() => {
       </div>
       <div v-if="!store.data.ledger.records.length" class="muted" style="font-size:12px;margin-top:6px">还没有记账数据，去「记账」页添加后这里会自动生成图表。</div>
     </div>
-
-    <!-- 年报 -->
-    <div class="section-title">{{ yearReport.year }} 年度报告</div>
-    <div class="glass card">
-      <div class="grid2">
-        <div class="yr-item"><span class="muted">完成任务</span><b>{{ yearReport.tasksDone }}</b></div>
-        <div class="yr-item"><span class="muted">写下笔记</span><b>{{ yearReport.memos }}</b></div>
-        <div class="yr-item"><span class="muted">存入照片</span><b>{{ yearReport.photos }}</b></div>
-        <div class="yr-item"><span class="muted">留下足迹</span><b>{{ yearReport.footprints }}</b></div>
-        <div class="yr-item"><span class="muted">年度收入</span><b style="color:var(--eo-good)">{{ yearReport.ledIncome.toFixed(2) }}</b></div>
-        <div class="yr-item"><span class="muted">年度支出</span><b style="color:var(--eo-bad)">{{ yearReport.ledExpense.toFixed(2) }}</b></div>
-      </div>
-    </div>
   </div>
 </template>
 
 <style scoped>
-.chart-row { display: flex; align-items: flex-end; gap: 6px; }
-.chart-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+/* 周期报告 Tab */
+.pr-tabs { display: inline-flex; padding: 4px; gap: 4px; }
+.pr-tab { min-width: 84px; }
+.pr-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 12px; }
+.pr-tile {
+  background: var(--eo-chip); border-radius: 14px; padding: 12px 6px;
+  display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center;
+}
+.pr-tile b { font-size: 22px; font-weight: 800; color: var(--eo-primary-deep); }
+.pr-tile span { font-size: 12px; color: var(--eo-ink); }
+.pr-tile i { font-size: 10px; font-style: normal; color: var(--eo-ink-soft); }
+@media (max-width: 560px) { .pr-grid { grid-template-columns: repeat(2, 1fr); } }
+
+.pr-summary {
+  display: flex; gap: 10px; align-items: flex-start; margin-top: 14px;
+  padding: 12px 14px; border-radius: 14px; background: var(--eo-chip);
+}
+.pr-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--eo-good); flex: none; margin-top: 4px; }
+
+.chart-row { display: flex; align-items: flex-end; gap: 6px; margin-top: 10px; }
+.chart-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
 .chart-col .muted { font-size: 10px; white-space: nowrap; }
 .chart-bars { display: flex; align-items: flex-end; gap: 3px; height: 64px; }
 .chart-bars i { width: 8px; border-radius: 4px 4px 0 0; min-height: 2px; display: block; transition: height .4s cubic-bezier(.22,1,.36,1); }
+.b-act { background: linear-gradient(180deg, var(--eo-primary-soft), var(--eo-primary)); }
 .b-done { background: var(--eo-primary); }
 .b-new { background: var(--eo-glass-border); }
-.b-memo { background: #9A8FB0; }
 .b-inc { background: var(--eo-good); }
 .b-exp { background: var(--eo-bad); }
 .dot { width: 9px; height: 9px; border-radius: 3px; display: inline-block; }
-.yr-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 4px; border-bottom: 1px solid var(--eo-glass-border); font-size: 14px; }
-.yr-item:last-child, .yr-item:nth-last-child(2) { border-bottom: none; }
 </style>

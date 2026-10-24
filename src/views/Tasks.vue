@@ -6,7 +6,6 @@ import { useDialogStore } from '../stores/dialog.js'
 import { TASK_CATEGORY, TASK_STATUS } from '../lib/model.js'
 import Icon from '../components/Icon.vue'
 import TaskNode from '../components/TaskNode.vue'
-import ClockPicker from '../components/ClockPicker.vue'
 import Modal from '../components/GlassBottomSheet.vue'
 
 const store = useAppStore()
@@ -47,6 +46,17 @@ function statusLabel(s) { return (TASK_STATUS[s] || {}).label || s }
 
 // 可选父任务：排除自身（防环）
 const parentOptions = computed(() => store.data.tasks.filter((t) => t.id !== editor.value.id && t.category !== 'todo'))
+
+// 截止日期时间：原生 datetime-local（鼠标友好），底层仍拆存 dueDate + dueTime
+const dueLocal = computed({
+  get() { return (editor.value.dueDate || '') + (editor.value.dueTime ? 'T' + editor.value.dueTime : '') },
+  set(v) {
+    if (!v) { editor.value.dueDate = ''; editor.value.dueTime = ''; return }
+    const [d, t] = String(v).split('T')
+    editor.value.dueDate = d || ''
+    editor.value.dueTime = t ? t.slice(0, 5) : ''
+  }
+})
 
 function saveEditor() {
   const f = editor.value
@@ -123,7 +133,12 @@ function batchExport() {
           </div>
         </div>
       </template>
-      <div v-if="!store.data.tasks.some((t) => t.category !== 'todo')" class="muted" style="text-align:center;padding:30px">还没有日常任务</div>
+      <div v-if="!store.data.tasks.some((t) => t.category !== 'todo')" class="glass card" style="text-align:center;padding:30px 16px">
+        <div style="font-size:30px">🌱</div>
+        <div style="font-weight:700;margin-top:6px">还没有日常任务</div>
+        <div class="muted" style="font-size:13px;margin-top:2px">从一个目标开始，人生游戏正式开局</div>
+        <button class="btn" style="margin:12px auto 0" @click="openEditor(null, null)"><Icon name="plus" :size="16" /> 添加你的第一个任务</button>
+      </div>
     </div>
 
     <!-- Todo：强制表格视图 -->
@@ -147,7 +162,10 @@ function batchExport() {
                 </div>
               </td>
             </tr>
-            <tr v-if="!todoTasks.length"><td colspan="4" class="muted" style="padding:20px;text-align:center">暂无 Todo</td></tr>
+            <tr v-if="!todoTasks.length"><td colspan="4" style="padding:20px;text-align:center">
+              <div class="muted">暂无 Todo</div>
+              <button class="btn" style="margin-top:10px" @click="openEditor(null, null)"><Icon name="plus" :size="16" /> 新建 Todo</button>
+            </td></tr>
           </tbody>
         </table>
       </div>
@@ -184,10 +202,7 @@ function batchExport() {
         <input v-model="editor.tags" placeholder="如：工作 重要" />
       </div>
       <div class="field" v-if="editor.category === 'todo'"><label>截止日期与时间</label>
-        <div class="row" style="gap:8px;flex-wrap:wrap">
-          <input type="date" v-model="editor.dueDate" style="flex:1;min-width:130px" />
-          <ClockPicker v-model="editor.dueTime" />
-        </div>
+        <input type="datetime-local" v-model="dueLocal" />
       </div>
       <button class="btn" style="width:100%" @click="saveEditor"><Icon name="checklist" :size="16" /> {{ editor.id ? '保存修改' : '创建' }}</button>
     </Modal>

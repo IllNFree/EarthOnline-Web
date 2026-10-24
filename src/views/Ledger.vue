@@ -28,15 +28,17 @@ const summary = computed(() => {
   monthRecords.value.forEach((r) => { if (r.type === 'income') income += r.amount; else expense += r.amount })
   return { income, expense, balance: income - expense }
 })
+const byCategoryType = ref('expense') // 环形图切换：支出 / 收入
 const byCategory = computed(() => {
   const m = {}
   monthRecords.value.forEach((r) => {
-    if (r.type !== 'expense') return
+    if (r.type !== byCategoryType.value) return
     if (!m[r.category]) m[r.category] = 0
     m[r.category] += r.amount
   })
   return Object.entries(m).map(([name, v]) => ({ name, v })).sort((a, b) => b.v - a.v)
 })
+const byCategoryTotal = computed(() => byCategory.value.reduce((s, c) => s + c.v, 0))
 const catColor = (i) => ['#D4A373', '#C9A87C', '#B08553', '#8FA98F', '#9A8FB0', '#C48B7A', '#B0A086', '#8C9BAB'][i % 8]
 // 环形图
 const donut = computed(() => {
@@ -51,6 +53,18 @@ const donut = computed(() => {
   })
 })
 const cats = computed(() => form.value.type === 'income' ? store.data.ledger.incomeCategories : store.data.ledger.expenseCategories)
+// 自定义分类：记一笔弹窗内直接添加
+const newCat = ref('')
+function addCat() {
+  const name = String(newCat.value || '').trim()
+  if (!name) return
+  if (cats.value.some((c) => c.name === name)) { store.showToast('分类已存在'); return }
+  cats.value.push({ name, icon: 'tag' })
+  form.value.category = name
+  newCat.value = ''
+  store.persist()
+  store.showToast('已添加分类：' + name)
+}
 
 function openAdd() {
   form.value = { type: 'expense', amount: '', category: '', note: '', date: '' }
@@ -141,19 +155,25 @@ const fmtDay = (d) => d.slice(5).replace('-', ' 月 ') + ' 日'
       </div>
     </div>
 
-    <!-- 分类占比（支出环形图） -->
-    <div v-if="byCategory.length" class="glass card row" style="gap:18px;align-items:center">
-      <svg width="120" height="120" viewBox="0 0 120 120" style="flex:none">
-        <circle cx="60" cy="60" r="42" fill="none" stroke="var(--eo-glass-border)" stroke-width="14" />
-        <circle v-for="(s, i) in donut" :key="i" cx="60" cy="60" r="42" fill="none"
-          :stroke="s.color" stroke-width="14" :stroke-dasharray="s.dasharray" :stroke-dashoffset="s.dashoffset"
-          transform="rotate(-90 60 60)" />
-        <text x="60" y="66" text-anchor="middle" font-size="13" font-weight="700" fill="var(--eo-ink)">{{ summary.expense.toFixed(0) }}</text>
-      </svg>
-      <div style="flex:1;min-width:0">
-        <div v-for="(c, i) in byCategory.slice(0, 8)" :key="c.name" class="row between" style="padding:3px 0;font-size:13px">
-          <span class="row" style="gap:8px"><i :style="{ width: '10px', height: '10px', borderRadius: '3px', background: catColor(i), display: 'inline-block' }"></i>{{ c.name }}</span>
-          <span class="muted">{{ c.v.toFixed(2) }}</span>
+    <!-- 分类占比（支出/收入环形图切换） -->
+    <div v-if="byCategory.length" class="glass card" style="padding:14px">
+      <div class="capsule" style="display:inline-flex;padding:3px;gap:3px;margin-bottom:10px">
+        <button class="btn ghost" :style="byCategoryType === 'expense' ? 'background:var(--eo-primary);color:#fff;padding:4px 14px' : 'padding:4px 14px'" @click="byCategoryType = 'expense'">支出占比</button>
+        <button class="btn ghost" :style="byCategoryType === 'income' ? 'background:var(--eo-primary);color:#fff;padding:4px 14px' : 'padding:4px 14px'" @click="byCategoryType = 'income'">收入占比</button>
+      </div>
+      <div class="row" style="gap:18px;align-items:center">
+        <svg width="120" height="120" viewBox="0 0 120 120" style="flex:none">
+          <circle cx="60" cy="60" r="42" fill="none" stroke="var(--eo-glass-border)" stroke-width="14" />
+          <circle v-for="(s, i) in donut" :key="i" cx="60" cy="60" r="42" fill="none"
+            :stroke="s.color" stroke-width="14" :stroke-dasharray="s.dasharray" :stroke-dashoffset="s.dashoffset"
+            transform="rotate(-90 60 60)" />
+          <text x="60" y="66" text-anchor="middle" font-size="13" font-weight="700" fill="var(--eo-ink)">{{ byCategoryTotal.toFixed(0) }}</text>
+        </svg>
+        <div style="flex:1;min-width:0">
+          <div v-for="(c, i) in byCategory.slice(0, 8)" :key="c.name" class="row between" style="padding:3px 0;font-size:13px">
+            <span class="row" style="gap:8px"><i :style="{ width: '10px', height: '10px', borderRadius: '3px', background: catColor(i), display: 'inline-block' }"></i>{{ c.name }}</span>
+            <span class="muted">{{ c.v.toFixed(2) }} · {{ Math.round(c.v / (byCategoryTotal || 1) * 100) }}%</span>
+          </div>
         </div>
       </div>
     </div>
@@ -192,6 +212,10 @@ const fmtDay = (d) => d.slice(5).replace('-', ' 月 ') + ' 日'
           <button v-for="c in cats" :key="c.name" class="chip" :style="form.category === c.name ? 'background:var(--eo-primary);color:#fff' : ''" @click="form.category = c.name">
             <Icon :name="c.icon || 'tag'" :size="12" /> {{ c.name }}
           </button>
+        </div>
+        <div class="row" style="gap:6px;margin-top:8px">
+          <input v-model="newCat" placeholder="自定义分类…" style="flex:1" @keyup.enter="addCat" />
+          <button class="chip" style="flex:none" @click="addCat"><Icon name="plus" :size="12" /> 添加</button>
         </div>
       </div>
       <div class="field"><label>日期</label><input type="date" v-model="form.date" /></div>

@@ -1,10 +1,20 @@
 <script setup>
 // 全局二级弹窗：固定尺寸、屏幕居中（废弃抽屉式 BottomSheet，对齐 Android 决断）
+import { onMounted, onUnmounted } from 'vue'
 import { motion, AnimatePresence } from 'motion-v'
 import Icon from './Icon.vue'
 
 const props = defineProps({ title: { type: String, default: '' }, show: { type: Boolean, default: false } })
 const emit = defineEmits(['close'])
+
+// 全局 Esc（App.vue 广播 eo-esc）：弹窗打开时消费事件并关闭
+function onEsc(e) {
+  if (!props.show) return
+  e.preventDefault()
+  emit('close')
+}
+onMounted(() => document.addEventListener('eo-esc', onEsc))
+onUnmounted(() => document.removeEventListener('eo-esc', onEsc))
 
 const maskVariants = {
   initial: { opacity: 0, backdropFilter: 'blur(0px)' },

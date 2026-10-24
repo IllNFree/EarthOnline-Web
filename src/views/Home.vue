@@ -2,39 +2,45 @@
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAppStore } from '../stores/app.js'
-import { getLifeStats, growthStageOf } from '../lib/model.js'
+import { getLifeStats, growthStageOf, todayStr } from '../lib/model.js'
 import Icon from '../components/Icon.vue'
 
 const store = useAppStore()
 const router = useRouter()
-const showMore = ref(false)
+const p2d = (n) => String(n).padStart(2, '0')
+const today = todayStr()
 
-// 速览：任务拆「日常/Todo」，背包拆「物品/收藏」（参考需求 #7）
-const waffle = [
-  { name: 'daily', icon: 'tasks', label: '日常', to: '/tasks' },
-  { name: 'todo', icon: 'checklist', label: 'Todo', to: '/tasks?tab=todo' },
-  { name: 'item', icon: 'backpack', label: '物品', to: '/backpack' },
-  { name: 'collection', icon: 'star', label: '收藏', to: '/backpack?sub=collection' },
-  { name: 'notes', icon: 'note', label: '笔记', to: '/notes' },
-  { name: 'album', icon: 'album', label: '相册', to: '/album' },
-  { name: 'map', icon: 'map-pin', label: '足迹', to: '/map' },
-  { name: 'achievements', icon: 'trophy', label: '成就', to: '/achievements' }
-]
-const moreWaffle = [
-  { name: 'ledger', icon: 'wallet', label: '记账', to: '/ledger' },
-  { name: 'stats', icon: 'chart', label: '数据中心', to: '/stats' },
-  { name: 'trash', icon: 'trash', label: '回收站', to: '/trash' },
-  { name: 'steam', icon: 'cloud', label: 'Steam', to: '/steam' },
-  { name: 'settings', icon: 'settings', label: '设置', to: '/settings' }
+// ---- 快捷操作台（不再复制侧边栏，改为动作 + 数据看板） ----
+const quickActions = [
+  { label: '写笔记', icon: 'note', tint: '#7A6FA8', bg: '#ECE9F4', to: '/notes' },
+  { label: '记一笔', icon: 'wallet', tint: '#4E9668', bg: '#E3EFE6', to: '/ledger' },
+  { label: '新任务', icon: 'tasks', tint: '#B08553', bg: '#F5E9DA', to: '/tasks' },
+  { label: '传照片', icon: 'album', tint: '#5F8F63', bg: '#E5F0E2', to: '/album' },
+  { label: '留足迹', icon: 'map-pin', tint: '#5B7E9E', bg: '#E2EAF2', to: '/map' },
+  { label: '看数据', icon: 'chart', tint: '#C4634C', bg: '#F6E5DF', to: '/stats' }
 ]
 function go(to) { router.push(to) }
+
+// ---- 今日数据看板（与侧边栏信息互补：只看「今天」+「最新」） ----
+const dash = computed(() => {
+  const todayDue = store.data.tasks.filter((t) => t.dueDate === today && t.status !== 'done').length
+  const todayDone = store.data.tasks.filter((t) => t.doneAt && t.doneAt.slice(0, 10) === today).length
+  let inc = 0, exp = 0
+  store.data.ledger.records.forEach((r) => { if (r.date === today) { if (r.type === 'income') inc += r.amount; else exp += r.amount } })
+  const lastPhoto = (store.data.photos || []).slice().sort((a, b) => ((a.createdAt || '') < (b.createdAt || '') ? 1 : -1))[0]
+  const lastMemo = (store.data.memos || []).slice().sort((a, b) => ((a.createdAt || '') < (b.createdAt || '') ? 1 : -1))[0]
+  return { todayDue, todayDone, balance: inc - exp, lastPhoto, lastMemo }
+})
+
+// ---- 空状态判定（新手引导 CTA） ----
+const isNewbie = computed(() => !store.data.tasks.length && !store.data.memos.length && !store.data.photos.length && !store.data.locations.length)
+const needBirth = computed(() => !store.data.birthDate)
 
 // ---- 日历视图（与任务截止结合） ----
 const WEEK = ['日', '一', '二', '三', '四', '五', '六']
 const calBase = ref(new Date())
 const selDay = ref('')
-const p2 = (n) => String(n).padStart(2, '0')
-const fmt = (d) => d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate())
+const fmt = (d) => d.getFullYear() + '-' + p2d(d.getMonth() + 1) + '-' + p2d(d.getDate())
 const calTitle = computed(() => calBase.value.getFullYear() + ' 年 ' + (calBase.value.getMonth() + 1) + ' 月')
 const dueMap = computed(() => {
   const m = {}
@@ -51,11 +57,11 @@ const calCells = computed(() => {
   for (let i = 0; i < 42; i++) {
     const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i)
     const key = fmt(d)
-    cells.push({ key, day: d.getDate(), inMonth: d.getMonth() === mo, isToday: key === fmt(new Date()), due: (dueMap.value[key] || []).length })
+    cells.push({ key, day: d.getDate(), inMonth: d.getMonth() === mo, isToday: key === today, due: (dueMap.value[key] || []).length })
   }
   return cells
 })
-const todayKey = fmt(new Date())
+const todayKey = today
 if (!selDay.value) selDay.value = todayKey
 const selTasks = computed(() => dueMap.value[selDay.value] || [])
 function calShift(n) { const d = new Date(calBase.value); d.setMonth(d.getMonth() + n); calBase.value = d }
@@ -80,14 +86,15 @@ const timeline = computed(() => {
 })
 function statusLabelOf(s) { return ({ planning: '规划中', active: '进行中', paused: '搁置', done: '已完成' })[s] || s }
 
-// ---- 主页卡片堆叠（支持左右滑动切换 / 层叠展示，需求 #8） ----
+// ---- 数据卡片堆叠：CSS 3D 前后层叠 + 鼠标/触摸拖拽切换（需求 #10） ----
 const stack = computed(() => {
   const cards = []
-  const todayDue = (dueMap.value[todayKey] || []).filter((t) => t.status !== 'done')
+  const todayDueList = (dueMap.value[todayKey] || []).filter((t) => t.status !== 'done')
   cards.push({
     icon: 'tasks', tint: 'primary', title: '今日任务',
-    big: String(todayDue.length), unit: '项待完成',
-    sub: todayDue.length ? todayDue.slice(0, 2).map((t) => t.title).join('、') : '今天没有截止任务，享受当下吧',
+    big: String(todayDueList.length), unit: '项待完成',
+    sub: todayDueList.length ? todayDueList.slice(0, 2).map((t) => t.title).join('、') : '',
+    empty: !todayDueList.length,
     to: '/tasks'
   })
   const mk = todayKey.slice(0, 7)
@@ -96,39 +103,88 @@ const stack = computed(() => {
   cards.push({
     icon: 'wallet', tint: 'bad', title: '本月支出',
     big: exp.toFixed(0), unit: '元 · 收入 ' + inc.toFixed(0),
-    sub: '收支明细一目了然', to: '/ledger'
+    sub: inc + exp ? '收支明细一目了然' : '还没有记账，点这里记第一笔', empty: !(inc + exp),
+    to: '/ledger'
   })
   const lastMemo = (store.data.memos || []).slice().sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))[0]
   cards.push({
     icon: 'note', tint: 'accent', title: '最新笔记',
     big: String(store.data.memos.length), unit: '篇',
-    sub: lastMemo ? (lastMemo.title || '无标题') : '写下第一篇笔记', to: '/notes'
+    sub: lastMemo ? (lastMemo.title || '无标题') : '记录你的每一个灵感', empty: !store.data.memos.length, to: '/notes'
   })
   const lastLoc = (store.data.locations || []).slice().sort((a, b) => (a.date < b.date ? 1 : -1))[0]
   cards.push({
     icon: 'map-pin', tint: 'good', title: '最近足迹',
     big: String(store.data.locations.length), unit: '个地点',
-    sub: lastLoc ? lastLoc.name + ' · ' + lastLoc.date : '去地图留下第一个足迹', to: '/map'
+    sub: lastLoc ? lastLoc.name + ' · ' + lastLoc.date : '去地图留下第一个足迹', empty: !store.data.locations.length, to: '/map'
   })
   return cards
 })
 const stackIdx = ref(0)
 function stackShift(n) { stackIdx.value = (stackIdx.value + n + stack.value.length) % stack.value.length }
-let touchX = 0
-function stackTouchStart(e) { touchX = e.changedTouches[0].clientX }
-function stackTouchEnd(e) {
-  const dx = e.changedTouches[0].clientX - touchX
-  if (Math.abs(dx) > 36) stackShift(dx > 0 ? -1 : 1)
-}
 const TINT = { primary: 'var(--eo-primary-deep)', bad: 'var(--eo-bad)', accent: 'var(--eo-accent)', good: 'var(--eo-good)' }
 function relPos(i) {
   const n = stack.value.length
   return (i - stackIdx.value + n) % n // 0=front, 1..n-1 = behind
 }
+function cardStyle(i) {
+  const k = relPos(i)
+  if (k > 2) return 'display:none'
+  const base = { 0: 'translate3d(0,0,0) scale(1)', 1: 'translate3d(0,-12px,-46px) scale(.965)', 2: 'translate3d(0,-22px,-88px) scale(.93)' }[k]
+  const opacity = { 0: 1, 1: .6, 2: .3 }[k]
+  let t = base
+  if (k === 0 && dragX.value) t = 'translate3d(' + dragX.value + 'px,0,0) rotate(' + (dragX.value * 0.04) + 'deg) scale(1)'
+  const pos = k === 0 ? 'position:relative;z-index:3' : 'position:absolute;left:0;right:0;top:0;z-index:' + (k === 1 ? 2 : 1) + ';pointer-events:auto'
+  return 'display:block;' + pos + ';transform:' + t + ';opacity:' + opacity + (k === 0 && dragging.value ? ';transition:none' : '')
+}
+// 拖拽（鼠标 + 触摸统一走 Pointer Events）
+const dragX = ref(0)
+const dragging = ref(false)
+const didDrag = ref(false)
+let dragStartX = 0, dragPid = -1
+function onPointerDown(e) {
+  if (relPos(Number(e.currentTarget.dataset.idx)) !== 0) return
+  dragging.value = true; dragStartX = e.clientX; dragPid = e.pointerId
+  window.addEventListener('pointermove', onPointerMove)
+  window.addEventListener('pointerup', onPointerUp)
+  window.addEventListener('pointercancel', onPointerUp)
+}
+function onPointerMove(e) {
+  if (!dragging.value || e.pointerId !== dragPid) return
+  dragX.value = e.clientX - dragStartX
+}
+function onPointerUp(e) {
+  window.removeEventListener('pointermove', onPointerMove)
+  window.removeEventListener('pointerup', onPointerUp)
+  window.removeEventListener('pointercancel', onPointerUp)
+  if (!dragging.value) return
+  const dx = e.pointerId === dragPid ? (e.clientX - dragStartX) : dragX.value
+  dragging.value = false; dragPid = -1
+  didDrag.value = Math.abs(dx) > 6
+  if (Math.abs(dx) > 72) stackShift(dx < 0 ? 1 : -1)
+  dragX.value = 0
+  setTimeout(() => { didDrag.value = false }, 80)
+}
+function onCardClick(i, c) {
+  if (didDrag.value) return
+  if (relPos(i) === 0) go(c.to)
+  else stackShift(1)
+}
 </script>
 
 <template>
   <div class="page wide">
+    <!-- 新手欢迎（全空数据时的引导 CTA） -->
+    <div v-if="isNewbie" class="glass card welcome-card">
+      <div style="font-size:30px">🌏</div>
+      <div style="font-size:17px;font-weight:800;margin-top:6px">欢迎来到地球！</div>
+      <div class="muted" style="font-size:13px;margin-top:4px">新手教程已开启：先设置你的生日，再添加第一个任务，人生游戏正式开局。</div>
+      <div class="row" style="gap:8px;margin-top:12px;flex-wrap:wrap;justify-content:center">
+        <button class="btn" @click="go('/settings')"><Icon name="user" :size="16" /> 设置生日</button>
+        <button class="btn ghost" @click="go('/tasks')"><Icon name="plus" :size="16" /> 添加第一个任务</button>
+      </div>
+    </div>
+
     <!-- 问候 + 人生进度 -->
     <div class="glass card">
       <div class="row between">
@@ -143,14 +199,19 @@ function relPos(i) {
         <span>已活 {{ life.daysLived }} 天</span>
         <span>{{ stage.label }} · {{ store.xp }} XP</span>
       </div>
+      <!-- 空状态 CTA：未设生日 -->
+      <div v-if="needBirth" class="row between" style="margin-top:10px;padding:10px 12px;background:var(--eo-chip);border-radius:14px;gap:8px">
+        <span class="muted" style="font-size:13px">设置生日后，这里会展示你的人生进度</span>
+        <button class="chip" @click="go('/settings')" style="flex:none">去设置</button>
+      </div>
     </div>
 
-    <!-- 卡片堆叠（左右滑动 / 点按切换） -->
-    <div v-if="stack.length" class="stack-wrap" @touchstart.passive="stackTouchStart" @touchend.passive="stackTouchEnd">
+    <!-- 数据卡片堆叠（3D 层叠 + 拖拽滑动切换） -->
+    <div v-if="stack.length" class="stack-wrap">
       <div
-        v-for="(c, i) in stack" :key="c.title" class="glass card stack-card" :class="'pos-' + relPos(i)"
-        :style="relPos(i) < 3 ? 'display:block' : 'display:none'"
-        @click="relPos(i) === 0 ? go(c.to) : stackShift(1)">
+        v-for="(c, i) in stack" :key="c.title" class="glass card stack-card"
+        :data-idx="i" :style="cardStyle(i)"
+        @pointerdown="onPointerDown" @click="onCardClick(i, c)">
         <div class="row between">
           <span class="row" style="gap:8px">
             <span class="avatar" style="width:36px;height:36px;background:var(--eo-chip)" :style="'color:' + TINT[c.tint]"><Icon :name="c.icon" :size="19" /></span>
@@ -162,34 +223,52 @@ function relPos(i) {
           <span style="font-size:34px;font-weight:800;line-height:1" :style="'color:' + TINT[c.tint]">{{ c.big }}</span>
           <span class="muted" style="font-size:13px">{{ c.unit }}</span>
         </div>
-        <div class="muted" style="font-size:12px;margin-top:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.sub }}</div>
+        <div v-if="!c.empty" class="muted" style="font-size:12px;margin-top:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.sub }}</div>
+        <!-- 空状态 CTA：引导添加第一条数据 -->
+        <button v-else class="btn" style="width:100%;margin-top:10px" @click.stop="go(c.to)">
+          <Icon name="plus" :size="16" /> {{ c.title === '今日任务' ? '添加你的第一个任务' : (c.title === '最新笔记' ? '写下第一篇笔记' : (c.title === '最近足迹' ? '留下第一个足迹' : '记下第一笔账')) }}
+        </button>
       </div>
-      <div class="row" style="justify-content:center;gap:8px;margin-top:10px">
+      <div class="row" style="justify-content:center;gap:8px;margin-top:12px">
         <button class="chip" @click="stackShift(-1)"><Icon name="chevron" :size="13" style="transform:rotate(180deg)" /></button>
         <span v-for="(c, i) in stack" :key="'d' + i" class="stack-dot" :style="i === stackIdx ? 'background:var(--eo-primary)' : ''"></span>
         <button class="chip" @click="stackShift(1)"><Icon name="chevron" :size="13" /></button>
       </div>
+      <div class="muted" style="text-align:center;font-size:11px;margin-top:2px">拖拽卡片左右滑动切换</div>
     </div>
 
-    <!-- 华夫饼菜单 -->
-    <div class="section-title">速览</div>
-    <div class="grid4">
-      <button v-for="w in waffle" :key="w.name" class="glass card list-item" style="flex-direction:column;gap:8px;margin:0" @click="go(w.to)">
-        <span class="avatar" style="background:var(--eo-chip);color:var(--eo-primary-deep)"><Icon :name="w.icon" :size="24" /></span>
-        <span style="font-weight:600;font-size:13px">{{ w.label }}</span>
+    <!-- 快捷操作台（动作入口，非导航复制） -->
+    <div class="section-title">快捷操作</div>
+    <div class="qa-grid">
+      <button v-for="a in quickActions" :key="a.label" class="glass card qa-item" @click="go(a.to)">
+        <span class="qa-icon" :style="'background:' + a.bg + ';color:' + a.tint"><Icon :name="a.icon" :size="21" /></span>
+        <span style="font-weight:600;font-size:12.5px;color:var(--eo-ink)">{{ a.label }}</span>
       </button>
     </div>
-    <transition name="fade">
-      <div v-if="showMore" class="grid4" style="margin-top:12px">
-        <button v-for="w in moreWaffle" :key="w.name" class="glass card list-item" style="flex-direction:column;gap:8px;margin:0" @click="go(w.to)">
-          <span class="avatar" style="background:var(--eo-chip);color:var(--eo-primary-deep)"><Icon :name="w.icon" :size="24" /></span>
-          <span style="font-weight:600;font-size:13px">{{ w.label }}</span>
-        </button>
-      </div>
-    </transition>
-    <button class="btn ghost" style="width:100%;margin-top:12px" @click="showMore = !showMore">
-      <Icon :name="showMore ? 'chevdown' : 'more'" /> {{ showMore ? '收起' : '更多功能' }}
-    </button>
+
+    <!-- 今日数据看板（与侧边栏互补：今日待办 / 今日结余 / 最新照片） -->
+    <div class="section-title">今日看板</div>
+    <div class="dash-grid">
+      <button class="glass card dash-tile" @click="go('/tasks')">
+        <div class="muted" style="font-size:12px">今日待办</div>
+        <div style="font-size:24px;font-weight:800;color:var(--eo-primary-deep)">{{ dash.todayDue }}</div>
+        <div class="muted" style="font-size:11px">已完成 {{ dash.todayDone }}</div>
+      </button>
+      <button class="glass card dash-tile" @click="go('/ledger')">
+        <div class="muted" style="font-size:12px">今日结余</div>
+        <div style="font-size:24px;font-weight:800" :style="'color:' + (dash.balance >= 0 ? 'var(--eo-good)' : 'var(--eo-bad)')">{{ dash.balance >= 0 ? '+' : '' }}{{ dash.balance.toFixed(0) }}</div>
+        <div class="muted" style="font-size:11px">元 · 去记账</div>
+      </button>
+      <button class="glass card dash-tile dash-photo" @click="go('/album')">
+        <div class="muted" style="font-size:12px">最近照片</div>
+        <img v-if="dash.lastPhoto && dash.lastPhoto.dataUrl" :src="dash.lastPhoto.dataUrl" alt="" class="dash-thumb" />
+        <div v-else class="muted" style="font-size:11px;margin-top:6px">去相册传一张</div>
+      </button>
+      <button class="glass card dash-tile" @click="go('/notes')">
+        <div class="muted" style="font-size:12px">最新笔记</div>
+        <div style="font-size:13px;font-weight:700;margin-top:4px;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">{{ dash.lastMemo ? (dash.lastMemo.title || '无标题') : '还没有笔记' }}</div>
+      </button>
+    </div>
 
     <!-- 电脑端三栏：日历 / 时间轴 / 最近动态（手机端纵向堆叠） -->
     <div class="home-lower">
@@ -262,6 +341,7 @@ function relPos(i) {
 </template>
 
 <style scoped>
+.welcome-card { text-align: center; padding: 22px 16px; }
 .cal-week { display: grid; grid-template-columns: repeat(7, 1fr); text-align: center; font-size: 11px; margin-bottom: 4px; }
 .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
 .cal-cell {
@@ -279,14 +359,24 @@ function relPos(i) {
 }
 .cal-cell.sel .cal-dot { background: #fff; }
 
-/* 卡片堆叠：层叠展示 + 平滑切换 */
-.stack-wrap { margin: 14px 0 4px; position: relative; }
-.stack-card { transition: transform .35s cubic-bezier(.22,1,.36,1), opacity .35s ease; cursor: pointer; }
-.stack-card.pos-0 { transform: translateY(0) scale(1); opacity: 1; z-index: 3; position: relative; }
-.stack-card.pos-1 { transform: translateY(-8px) scale(.96); opacity: .55; z-index: 2; position: absolute; left: 0; right: 0; top: 0; pointer-events: none; }
-.stack-card.pos-2 { transform: translateY(-14px) scale(.92); opacity: .28; z-index: 1; position: absolute; left: 0; right: 0; top: 0; pointer-events: none; }
+/* 卡片堆叠：CSS 3D 前后层叠 + 拖拽（定位由 cardStyle 内联控制） */
+.stack-wrap { margin: 14px 0 4px; position: relative; perspective: 1000px; }
+.stack-card {
+  transition: transform .35s cubic-bezier(.22,1,.36,1), opacity .35s ease;
+  cursor: grab; touch-action: pan-y; user-select: none; -webkit-user-select: none;
+}
+.stack-card:active { cursor: grabbing; }
 .stack-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--eo-glass-border); display: inline-block; }
 
-/* 速览 4 列（8 个入口两行） */
-.grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+/* 快捷操作台：彩色低饱和背景瓷砖 */
+.qa-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; }
+.qa-item { display: flex; flex-direction: column; align-items: center; gap: 7px; margin: 0; padding: 12px 4px; }
+.qa-icon { width: 42px; height: 42px; border-radius: 14px; display: flex; align-items: center; justify-content: center; }
+@media (max-width: 640px) { .qa-grid { grid-template-columns: repeat(3, 1fr); } }
+
+/* 今日看板 */
+.dash-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.dash-tile { margin: 0; padding: 12px; text-align: left; display: flex; flex-direction: column; gap: 2px; }
+.dash-thumb { width: 100%; height: 52px; object-fit: cover; border-radius: 10px; margin-top: 4px; }
+@media (max-width: 640px) { .dash-grid { grid-template-columns: repeat(2, 1fr); } }
 </style>
