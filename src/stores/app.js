@@ -74,6 +74,7 @@ export const useAppStore = defineStore('app', () => {
     updateLocation: wrap(ops.updateLocation),
     deleteLocation: wrap(ops.deleteLocation),
     addPhoto: wrap(ops.addPhoto),
+    updatePhoto: wrap(ops.updatePhoto),
     deletePhoto: wrap(ops.deletePhoto),
     restoreFromTrash: wrap(ops.restoreFromTrash),
     purgeTrashEntry: wrap(ops.purgeTrashEntry),

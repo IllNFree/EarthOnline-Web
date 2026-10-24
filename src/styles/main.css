@@ -8,9 +8,9 @@
   --eo-bg: #F8F6F2;
   --eo-bg-2: #F0EBE4;
   --eo-ink: #1E1A16;
-  --eo-ink-soft: #5F5952;
-  --eo-glass: rgba(255, 253, 250, 0.62);
-  --eo-glass-strong: rgba(255, 253, 250, 0.80);
+  --eo-ink-soft: #55504B;
+  --eo-glass: rgba(255, 255, 255, 0.55);
+  --eo-glass-strong: rgba(255, 255, 255, 0.70);
   --eo-glass-border: rgba(214, 205, 192, 0.78);
   --eo-glass-hi: rgba(255, 255, 255, 0.95);
   --eo-shadow: 0 10px 30px -12px rgba(154, 124, 88, 0.28);
@@ -60,14 +60,14 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 input, textarea, select { font-family: inherit; color: inherit; }
 ::-webkit-scrollbar { width: 0; height: 0; }
 
-/* ---- 液态玻璃卡片（提取自 wxbuddy：顶缘高光 + 透光感 + 无黑边阴影，重着暖奶茶色） ---- */
+/* ---- 液态玻璃卡片（强制半透明白 + 高光白边 + 毛玻璃，透出底层壁纸） ---- */
 .glass {
   position: relative;
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.65);
-  backdrop-filter: blur(22px) saturate(165%);
-  -webkit-backdrop-filter: blur(22px) saturate(165%);
-  border: 1px solid rgba(255, 255, 255, 0.5);
+  background: var(--eo-glass);
+  backdrop-filter: blur(16px) saturate(165%);
+  -webkit-backdrop-filter: blur(16px) saturate(165%);
+  border: 1px solid rgba(255, 255, 255, 0.6);
   background-clip: padding-box;
   border-radius: var(--eo-radius);
   box-shadow:
@@ -79,18 +79,27 @@ input, textarea, select { font-family: inherit; color: inherit; }
     background .35s ease, border-color .35s ease;
 }
 [data-theme='dark'] .glass { background: var(--eo-glass); border-color: var(--eo-glass-border); }
-/* 镜面高光：125° 斜向顶层反光 + 光标聚光灯（--mx/--my 由全局指针事件注入），screen 混合提亮（不是黑边阴影） */
+/* 镜面高光：125° 斜向顶层反光 + 光标聚光灯（--mx/--my 由全局指针事件注入）；hover 时聚光灯增强（深色微光对比 + 提亮） */
 .glass::before {
   content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
   background:
-    radial-gradient(260px circle at var(--mx, 50%) var(--my, 0%), rgba(255, 255, 255, 0.28), transparent 65%),
+    radial-gradient(340px circle at var(--mx, 50%) var(--my, 0%), rgba(255, 255, 255, 0.52), transparent 60%),
     linear-gradient(125deg,
-    rgba(255, 255, 255, 0.34) 0%,
-    rgba(255, 255, 255, 0.10) 18%,
+    rgba(255, 255, 255, 0.42) 0%,
+    rgba(255, 255, 255, 0.14) 18%,
     transparent 42%, transparent 68%,
-    rgba(255, 255, 255, 0.06) 100%);
-  opacity: .85; mix-blend-mode: screen;
+    rgba(255, 255, 255, 0.10) 100%);
+  opacity: .82; mix-blend-mode: screen;
   transition: opacity .3s ease;
+}
+@media (hover: hover) {
+  /* 悬浮增强：聚光灯更亮 + 暖色微光晕，凸显动态质感 */
+  .glass.card:hover::before, .glass.list-item:hover::before, .eo-card.glass:hover::before {
+    opacity: 1;
+    background:
+      radial-gradient(380px circle at var(--mx, 50%) var(--my, 0%), rgba(255, 255, 255, 0.66), transparent 58%),
+      linear-gradient(125deg, rgba(255,255,255,0.46) 0%, rgba(255,255,255,0.16) 18%, transparent 42%, transparent 68%, rgba(255,255,255,0.12) 100%);
+  }
 }
 /* 卡片悬浮升降（仅卡片类，导航/弹窗不受影响） */
 @media (hover: hover) {
@@ -109,10 +118,10 @@ input, textarea, select { font-family: inherit; color: inherit; }
   content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16), inset 0 0 26px rgba(255, 255, 255, 0.06);
 }
-.glass-strong { background: rgba(255, 255, 255, 0.78); border: 1px solid rgba(255, 255, 255, 0.55); }
+.glass-strong { background: var(--eo-glass-strong); border: 1px solid rgba(255, 255, 255, 0.6); }
 [data-theme='dark'] .glass-strong { background: var(--eo-glass-strong); border-color: var(--eo-glass-border); }
 /* 强质感液态玻璃（华夫饼/速览卡）：hover 上浮 + 暖色光晕 */
-.glass-liquid { background: rgba(255, 255, 255, 0.78); border: 1px solid rgba(255, 255, 255, 0.55); }
+.glass-liquid { background: var(--eo-glass-strong); border: 1px solid rgba(255, 255, 255, 0.6); }
 [data-theme='dark'] .glass-liquid { background: var(--eo-glass-strong); border-color: var(--eo-glass-border); }
 .glass-liquid:hover {
   transform: translateY(-2px) scale(1.006);
@@ -386,7 +395,8 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .modal {
   width: min(92vw, 560px); max-height: 84vh; overflow-y: auto;
   border-radius: 26px; padding: 20px 18px;
-  background: var(--eo-bg); border: 1px solid var(--eo-glass-border);
+  background: rgba(255, 255, 255, 0.62); backdrop-filter: blur(16px) saturate(160%); -webkit-backdrop-filter: blur(16px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.6);
   box-shadow: var(--eo-shadow), inset 0 1px 0 var(--eo-glass-hi);
 }
 .modal h3 { margin: 4px 0 14px; font-size: 18px; }
@@ -397,6 +407,45 @@ input, textarea, select { font-family: inherit; color: inherit; }
   border: 1px solid var(--eo-glass-border); background: var(--eo-glass);
 }
 .field textarea { resize: vertical; min-height: 70px; }
+
+/* ---- 统一工具类：顶右操作按钮 / 全局搜索 / 图片裁切 / 账单虚线行 ---- */
+.page-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+.page-head .spacer { flex: 1; }
+/* 顶右悬浮「添加」按钮（毛玻璃 + 发光） */
+.add-btn {
+  display: inline-flex; align-items: center; gap: 6px; padding: 9px 14px; border-radius: 999px;
+  font-size: 14px; font-weight: 700; color: #fff;
+  background: linear-gradient(135deg, var(--eo-primary), var(--eo-primary-deep));
+  box-shadow: 0 0 0 1px rgba(255,255,255,.18) inset, 0 8px 22px -8px rgba(176,133,83,.6);
+  transition: transform .2s cubic-bezier(.22,1,.36,1), box-shadow .2s ease, filter .2s ease;
+}
+.add-btn:hover { transform: translateY(-1px); filter: brightness(1.05); box-shadow: 0 0 0 1px rgba(255,255,255,.24) inset, 0 0 26px rgba(212,163,115,.5), 0 8px 22px -8px rgba(176,133,83,.6); }
+.add-btn:active { transform: scale(.96); }
+/* 全局搜索框（玻璃胶囊） */
+.search-bar {
+  display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0;
+  padding: 9px 14px; border-radius: 999px;
+  background: var(--eo-glass); border: 1px solid var(--eo-glass-border);
+  box-shadow: inset 0 1px 0 var(--eo-glass-hi), var(--eo-shadow-soft);
+  backdrop-filter: blur(16px) saturate(160%); -webkit-backdrop-filter: blur(16px) saturate(160%);
+}
+.search-bar input { flex: 1; min-width: 0; border: none; background: transparent; outline: none; font-size: 14px; }
+.search-bar .clear { color: var(--eo-ink-soft); padding: 2px; }
+/* 图片统一裁切（防变形） */
+.cover-img { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 12px; }
+.thumb-round { border-radius: 14px; overflow: hidden; }
+/* 账单极简行（去厚卡 + 虚线分隔 + 加粗金额） */
+.led-row {
+  display: flex; align-items: center; gap: 12px; padding: 11px 2px;
+  border-top: 1px dashed var(--eo-glass-border);
+}
+.led-row:first-of-type { border-top: none; }
+.led-row .led-cat {
+  width: 40px; height: 40px; border-radius: 12px; flex: none; display: flex; align-items: center; justify-content: center;
+}
+.led-amt { font-weight: 800; font-size: 15px; font-variant-numeric: tabular-nums; }
+/* 分类管理：彩色标记 */
+.cat-dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; flex: none; }
 
 /* 进度条状态色 */
 .cat-main { color: var(--eo-primary-deep); }

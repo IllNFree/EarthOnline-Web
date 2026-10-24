@@ -20,6 +20,7 @@ const showAdd = ref(false)
 const pick = ref(null) // {lng,lat}
 const form = ref({ name: '', note: '', date: '', tags: '' })
 const loadErr = ref('')
+const searchMode = ref('place') // 'place' 地点搜索 / 'footprint' 本地足迹搜索
 
 onMounted(async () => {
   try {
@@ -34,6 +35,12 @@ onMounted(async () => {
       }
       pick.value = ll
       form.value.name = form.value.name || '我的足迹'
+    })
+    // 双击地图任意位置 → 直接弹出「创建足迹」
+    mapCtl.onDblClick((ll) => {
+      pick.value = ll
+      form.value.name = form.value.name || '我的足迹'
+      showAdd.value = true
     })
   } catch (e) { loadErr.value = e.message || '地图加载失败' }
   // 主页速览「留足迹」直达：自动聚焦搜索框
@@ -61,6 +68,15 @@ onUnmounted(() => document.removeEventListener('eo-esc', onEsc))
 
 async function doSearch() {
   if (!query.value.trim()) return
+  if (searchMode.value === 'footprint') {
+    // 本地足迹搜索：按名称 / 标签 / 备注过滤
+    const q = query.value.trim().toLowerCase()
+    results.value = store.data.locations
+      .filter((l) => (l.name || '').toLowerCase().includes(q) || (l.tags || []).join(' ').toLowerCase().includes(q) || (l.note || '').toLowerCase().includes(q))
+      .map((l) => ({ id: l.id, name: l.name, address: (l.tags || []).join(' / ') || l.note || '', location: { lng: l.lng, lat: l.lat } }))
+    searching.value = false
+    return
+  }
   searching.value = true
   try { results.value = await searchPlaces(query.value) }
   catch (e) { store.showToast('搜索失败：' + e.message) }
@@ -68,10 +84,15 @@ async function doSearch() {
 }
 function focusResult(r) {
   if (!r.location) return
-  if (mapCtl) { mapCtl.setCenter(r.location.lng, r.location.lat); mapCtl.addMarker(r.location.lng, r.location.lat, r.name) }
+  if (mapCtl) { mapCtl.clearMarkers(); mapCtl.setCenter(r.location.lng, r.location.lat); mapCtl.addMarker(r.location.lng, r.location.lat, r.name) }
   pick.value = r.location
   form.value.name = r.name
   showAdd.value = true
+}
+// 点击侧栏 / 列表足迹 → 地图自动居中定位
+function focusLocation(l) {
+  if (mapCtl) { mapCtl.clearMarkers(); mapCtl.setCenter(l.lng, l.lat, 15); mapCtl.addMarker(l.lng, l.lat, l.name) }
+  pick.value = { lng: l.lng, lat: l.lat }
 }
 function save() {
   const p = pick.value
@@ -95,10 +116,16 @@ async function removeLoc(id) {
   <div class="page wide" style="padding:0" @click="onBlankClick">
     <!-- 搜索区：独立于地图上方，互不重叠 -->
     <div class="map-top">
-      <div class="capsule" style="background:var(--eo-glass-strong)">
-        <Icon name="search" :size="18" />
-        <input ref="searchInput" v-model="query" placeholder="搜索地点（如：西湖）" @keyup.enter="doSearch" />
-        <button v-if="query" class="ghost-btn" style="padding:4px" title="清空" @click.stop="query = ''; results = []"><Icon name="x" :size="16" /></button>
+      <div class="row" style="gap:8px;align-items:center">
+        <div class="capsule" style="flex:1;background:var(--eo-glass-strong)">
+          <Icon name="search" :size="18" />
+          <input ref="searchInput" v-model="query" :placeholder="searchMode === 'place' ? '搜索地点（如：西湖）' : '搜索我的足迹（名称 / 标签）'" @keyup.enter="doSearch" />
+          <button v-if="query" class="ghost-btn" style="padding:4px" title="清空" @click.stop="query = ''; results = []"><Icon name="x" :size="16" /></button>
+        </div>
+        <div class="capsule" style="padding:4px;gap:4px;flex:none">
+          <button class="btn ghost" :style="searchMode === 'place' ? 'background:var(--eo-primary);color:#fff;padding:6px 12px' : 'padding:6px 12px'" @click="searchMode = 'place'">地点</button>
+          <button class="btn ghost" :style="searchMode === 'footprint' ? 'background:var(--eo-primary);color:#fff;padding:6px 12px' : 'padding:6px 12px'" @click="searchMode = 'footprint'">足迹</button>
+        </div>
       </div>
     </div>
     <div style="position:relative;height:46vh;margin:0 14px">
@@ -129,10 +156,10 @@ async function removeLoc(id) {
         <div class="es-sub">在上方搜索一个地点并点击结果，或直接在地图上点选位置，即可留下第一枚足迹。</div>
         <button class="btn" @click="searchInput && searchInput.focus()"><Icon name="search" :size="16" /> 搜索一个地点</button>
       </div>
-      <div v-for="l in store.data.locations" :key="l.id" class="glass list-item">
+      <div v-for="l in store.data.locations" :key="l.id" class="glass list-item" @click="focusLocation(l)">
         <span class="avatar"><Icon name="location" :size="20" /></span>
-        <div style="flex:1"><div style="font-weight:600">{{ l.name }}</div><div class="muted" style="font-size:12px">{{ l.date }} · {{ l.lat.toFixed(3) }},{{ l.lng.toFixed(3) }}</div></div>
-        <button class="ghost-btn" @click="removeLoc(l.id)"><Icon name="trash" :size="16" /></button>
+        <div style="flex:1;min-width:0"><div style="font-weight:600">{{ l.name }}</div><div class="muted" style="font-size:12px">{{ l.date }} · {{ l.lat.toFixed(3) }},{{ l.lng.toFixed(3) }}</div></div>
+        <button class="ghost-btn" @click.stop="removeLoc(l.id)"><Icon name="trash" :size="16" /></button>
       </div>
     </div>
 

@@ -265,6 +265,16 @@ export function deletePhoto(state, id) {
   if (idx < 0) return false
   return softDeleteToTrash(state, 'photo', state.photos.splice(idx, 1)[0])
 }
+export function updatePhoto(state, id, patch) {
+  const p = state.photos.find((x) => x.id === id)
+  if (!p) return { ok: false, error: '照片不存在' }
+  if (patch.name !== undefined) p.name = String(patch.name || '').trim() || '照片'
+  if (patch.tags !== undefined) p.tags = parseTagsInput(patch.tags)
+  if (patch.dataUrl !== undefined && patch.dataUrl) p.dataUrl = String(patch.dataUrl)
+  if (patch.category !== undefined) p.category = String(patch.category || '')
+  syncAchievements(state)
+  return { ok: true, error: '', photo: p }
+}
 
 export function setProfile(state, patch) {
   Object.assign(state.profile, patch)

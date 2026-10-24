@@ -33,6 +33,12 @@ const monthRecords = computed(() =>
     .filter((r) => r.date.startsWith(monthKey.value))
     .sort((a, b) => (a.date < b.date ? 1 : -1))
 )
+const kw = ref('')
+const shownRecords = computed(() => {
+  const q = kw.value.trim().toLowerCase()
+  if (!q) return monthRecords.value
+  return monthRecords.value.filter((r) => (r.category || '').toLowerCase().includes(q) || (r.note || '').toLowerCase().includes(q))
+})
 const summary = computed(() => {
   let income = 0, expense = 0
   monthRecords.value.forEach((r) => { if (r.type === 'income') income += r.amount; else expense += r.amount })
@@ -49,7 +55,17 @@ const byCategory = computed(() => {
   return Object.entries(m).map(([name, v]) => ({ name, v })).sort((a, b) => b.v - a.v)
 })
 const byCategoryTotal = computed(() => byCategory.value.reduce((s, c) => s + c.v, 0))
-const catColor = (i) => ['#D4A373', '#C9A87C', '#B08553', '#8FA98F', '#9A8FB0', '#C48B7A', '#B0A086', '#8C9BAB'][i % 8]
+// 多巴胺分类配色（高饱和、按分类名确定性取色，保证环形图与列表一致）
+const PALETTE = ['#FF6B6B', '#FF9F43', '#FECA57', '#1DD1A1', '#10AC84', '#48DBFB', '#54A0FF', '#5F27CD', '#EE5253', '#00D2D3', '#FF9FF3', '#F368E0']
+function catColor(i) { return PALETTE[i % PALETTE.length] }
+function catIndexOf(name) {
+  let h = 0
+  for (let i = 0; i < String(name || '').length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0
+  return h % PALETTE.length
+}
+function catColorOf(name) { return catColor(catIndexOf(name)) }
+// 账单列表按分类取色（确定性）
+const rowColor = (r) => catColorOf(r.category)
 // 环形图
 const donut = computed(() => {
   const total = byCategory.value.reduce((s, c) => s + c.v, 0) || 1
@@ -95,6 +111,27 @@ async function del(id) {
   if (!ok) return
   store.deleteLedgerRecord(id)
   store.showToast('已删除')
+}
+// 分类管理：自定义支出 / 收入分类（增删）
+const catMgr = ref(false)
+const catMgrType = ref('expense')
+const catNew = ref('')
+function catList() { return catMgrType.value === 'income' ? store.data.ledger.incomeCategories : store.data.ledger.expenseCategories }
+function addCatMgr() {
+  const name = String(catNew.value || '').trim()
+  if (!name) return
+  if (catList().some((c) => c.name === name)) { store.showToast('分类已存在'); return }
+  catList().push({ name, icon: 'tag' })
+  catNew.value = ''
+  store.persist()
+  store.showToast('已添加分类：' + name)
+}
+function delCat(name) {
+  const list = catList()
+  const idx = list.findIndex((c) => c.name === name)
+  if (idx >= 0) list.splice(idx, 1)
+  store.persist()
+  store.showToast('已删除分类：' + name)
 }
 // 数据导入 / 导出（按 id 去重合并）
 function exportLedger() {
@@ -151,6 +188,13 @@ const fmtDay = (d) => d.slice(5).replace('-', ' 月 ') + ' 日'
 
 <template>
   <div class="page wide">
+    <div class="page-head">
+      <div class="search-bar" style="max-width:240px">
+        <Icon name="search" :size="16" />
+        <input v-model="kw" placeholder="搜索分类 / 备注…" />
+      </div>
+      <button class="add-btn" @click="catMgr = true"><Icon name="tag" :size="16" /> 分类管理</button>
+    </div>
     <!-- 月度切换 + 概览 -->
     <div class="glass card">
       <div class="row between" style="margin-bottom:10px">
@@ -158,10 +202,10 @@ const fmtDay = (d) => d.slice(5).replace('-', ' 月 ') + ' 日'
         <span style="font-weight:700">{{ monthTitle }}</span>
         <button class="btn ghost" style="padding:6px 12px" @click="shiftMonth(1)"><Icon name="chevron" :size="16" /></button>
       </div>
-      <div class="grid3" style="text-align:center">
-        <div><div class="muted" style="font-size:12px">收入</div><div style="font-weight:800;font-size:18px;color:var(--eo-good)">+{{ summary.income.toFixed(2) }}</div></div>
-        <div><div class="muted" style="font-size:12px">支出</div><div style="font-weight:800;font-size:18px;color:var(--eo-bad)">-{{ summary.expense.toFixed(2) }}</div></div>
-        <div><div class="muted" style="font-size:12px">结余</div><div style="font-weight:800;font-size:18px">{{ summary.balance.toFixed(2) }}</div></div>
+      <div class="led-summary">
+        <div class="led-sum-item"><div class="muted" style="font-size:12px">收入</div><div style="font-weight:800;font-size:18px;color:#34C759">+{{ summary.income.toFixed(2) }}</div></div>
+        <div class="led-sum-item"><div class="muted" style="font-size:12px">支出</div><div style="font-weight:800;font-size:18px;color:#FF3B30">-{{ summary.expense.toFixed(2) }}</div></div>
+        <div class="led-sum-item"><div class="muted" style="font-size:12px">结余</div><div style="font-weight:900;font-size:20px;color:var(--eo-ink)">{{ summary.balance.toFixed(2) }}</div></div>
       </div>
     </div>
 
@@ -177,7 +221,8 @@ const fmtDay = (d) => d.slice(5).replace('-', ' 月 ') + ' 日'
           <circle v-for="(s, i) in donut" :key="i" cx="60" cy="60" r="42" fill="none"
             :stroke="s.color" stroke-width="14" :stroke-dasharray="s.dasharray" :stroke-dashoffset="s.dashoffset"
             transform="rotate(-90 60 60)" />
-          <text x="60" y="66" text-anchor="middle" font-size="13" font-weight="700" fill="var(--eo-ink)">{{ byCategoryTotal.toFixed(0) }}</text>
+          <text x="60" y="58" text-anchor="middle" font-size="19" font-weight="800" fill="var(--eo-ink)">{{ byCategoryTotal.toFixed(0) }}</text>
+          <text x="60" y="74" text-anchor="middle" font-size="10" fill="var(--eo-ink-soft)">元</text>
         </svg>
         <div style="flex:1;min-width:0">
           <div v-for="(c, i) in byCategory.slice(0, 8)" :key="c.name" class="row between" style="padding:3px 0;font-size:13px">
@@ -189,27 +234,31 @@ const fmtDay = (d) => d.slice(5).replace('-', ' 月 ') + ' 日'
     </div>
 
     <!-- 记录列表 -->
-    <div class="section-title">账单明细</div>
-    <div class="row" style="gap:8px;margin-bottom:10px">
-      <button class="chip" @click="exportLedger"><Icon name="download" :size="13" /> 导出账单</button>
-      <label class="chip" style="cursor:pointer"><Icon name="upload" :size="13" /> 导入账单<input type="file" accept="application/json,.json" style="display:none" @change="importLedger" /></label>
-    </div>
-    <div v-for="r in monthRecords" :key="r.id" class="glass list-item">
-      <span class="avatar" :style="r.type === 'income' ? 'background:rgba(78,150,104,.16);color:var(--eo-good)' : 'background:var(--eo-chip);color:var(--eo-primary-deep)'">
-        <Icon :name="r.type === 'income' ? 'coins' : 'wallet'" :size="20" />
-      </span>
-      <div style="flex:1;min-width:0">
-        <div style="font-weight:600">{{ r.category }}<span v-if="r.note" class="muted" style="font-weight:400;font-size:12px"> · {{ r.note }}</span></div>
-        <div class="muted" style="font-size:12px">{{ fmtDay(r.date) }}</div>
+    <div class="row between" style="margin-bottom:10px">
+      <div class="section-title" style="margin:0">账单明细</div>
+      <div class="row" style="gap:8px">
+        <button class="btn ghost" style="padding:7px 12px;font-size:13px" @click="exportLedger"><Icon name="download" :size="14" /> 导出</button>
+        <label class="btn ghost" style="padding:7px 12px;font-size:13px;cursor:pointer"><Icon name="upload" :size="14" /> 导入<input type="file" accept="application/json,.json" style="display:none" @change="importLedger" /></label>
       </div>
-      <span style="font-weight:700" :style="r.type === 'income' ? 'color:var(--eo-good)' : 'color:var(--eo-bad)'">
-        {{ r.type === 'income' ? '+' : '-' }}{{ r.amount.toFixed(2) }}
-      </span>
-      <button class="ghost-btn" @click="del(r.id)"><Icon name="trash" :size="16" /></button>
     </div>
-    <div v-if="!monthRecords.length" class="muted" style="text-align:center;padding:30px">本月暂无记录，点下方「记一笔」开始。</div>
+    <div class="glass card" style="padding:6px 14px">
+      <div v-for="r in shownRecords" :key="r.id" class="led-row">
+        <span class="led-cat" :style="'background:' + rowColor(r) + '22' + ';color:' + rowColor(r)">
+          <Icon :name="r.type === 'income' ? 'coins' : 'wallet'" :size="20" />
+        </span>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600;font-size:14px">{{ r.category }}<span v-if="r.note" class="muted" style="font-weight:400;font-size:12px"> · {{ r.note }}</span></div>
+          <div class="muted" style="font-size:12px">{{ fmtDay(r.date) }}</div>
+        </div>
+        <span class="led-amt" :style="r.type === 'income' ? 'color:#34C759' : 'color:#FF3B30'">
+          {{ r.type === 'income' ? '+' : '-' }}{{ r.amount.toFixed(2) }}
+        </span>
+        <button class="ghost-btn" @click="del(r.id)"><Icon name="trash" :size="16" /></button>
+      </div>
+    </div>
+    <div v-if="!shownRecords.length" class="muted" style="text-align:center;padding:30px">本月暂无记录，点下方「记一笔」开始。</div>
 
-    <button class="btn notes-fab" @click="openAdd"><Icon name="plus" :size="18" /> 记一笔</button>
+    <button class="led-fab" @click="openAdd"><Icon name="plus" :size="18" /> 记一笔</button>
 
     <Modal title="记一笔" :show="showAdd" @close="showAdd = false">
       <div class="capsule" style="padding:4px;gap:4px;margin-bottom:12px">
@@ -232,13 +281,45 @@ const fmtDay = (d) => d.slice(5).replace('-', ' 月 ') + ' 日'
       <div class="field"><label>备注</label><input v-model="form.note" placeholder="可选" /></div>
       <button class="btn" style="width:100%" @click="save"><Icon name="wallet" :size="16" /> 保存</button>
     </Modal>
+
+    <!-- 分类管理 -->
+    <Modal title="分类管理" :show="catMgr" @close="catMgr = false">
+      <div class="capsule" style="display:inline-flex;padding:3px;gap:3px;margin-bottom:12px">
+        <button class="btn ghost" :style="catMgrType === 'expense' ? 'background:var(--eo-primary);color:#fff;padding:4px 14px' : 'padding:4px 14px'" @click="catMgrType = 'expense'">支出分类</button>
+        <button class="btn ghost" :style="catMgrType === 'income' ? 'background:var(--eo-primary);color:#fff;padding:4px 14px' : 'padding:4px 14px'" @click="catMgrType = 'income'">收入分类</button>
+      </div>
+      <div class="row wrap" style="gap:8px;margin-bottom:12px">
+        <span v-for="c in catList()" :key="c.name" class="chip" :style="'background:' + catColorOf(c.name) + '22;color:' + catColorOf(c.name) + ';border-color:transparent'">
+          <i class="cat-dot" :style="'background:' + catColorOf(c.name)"></i>{{ c.name }}
+          <button class="ghost-btn" style="padding:0 0 0 4px" @click="delCat(c.name)"><Icon name="x" :size="13" /></button>
+        </span>
+      </div>
+      <div class="row" style="gap:6px">
+        <input v-model="catNew" placeholder="新分类名称…" style="flex:1" @keyup.enter="addCatMgr" />
+        <button class="btn" @click="addCatMgr"><Icon name="plus" :size="14" /> 添加</button>
+      </div>
+    </Modal>
   </div>
 </template>
 
 <style scoped>
 .ghost-btn { color: var(--eo-ink-soft); padding: 6px; }
-.notes-fab { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom, 0px) + 96px); z-index: 58; }
+.led-summary { display: flex; justify-content: center; gap: 30px; text-align: center; padding: 4px 0; }
+.led-summary .led-sum-item { min-width: 78px; }
+.led-fab {
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom, 0px) + 96px); z-index: 58;
+  display: inline-flex; align-items: center; gap: 6px; padding: 12px 22px; border-radius: 999px;
+  font-size: 15px; font-weight: 700; color: var(--eo-primary-deep);
+  background: var(--eo-glass-strong); backdrop-filter: blur(20px) saturate(170%); -webkit-backdrop-filter: blur(20px) saturate(170%);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  box-shadow: inset 0 1px 0 var(--eo-glass-hi), 0 0 26px rgba(212, 163, 115, 0.32), var(--eo-shadow-soft);
+  transition: transform .2s cubic-bezier(.22,1,.36,1), box-shadow .2s ease;
+}
+.led-fab:hover { transform: translateX(-50%) translateY(-2px); box-shadow: inset 0 1px 0 var(--eo-glass-hi), 0 0 34px rgba(212,163,115,.5), var(--eo-shadow-soft); }
+.led-fab:active { transform: translateX(-50%) scale(.96); }
 @media (min-width: 900px) {
-  .notes-fab { left: auto; right: 28px; transform: none; bottom: 28px; }
+  .led-fab { left: auto; right: 28px; transform: none; bottom: 28px; }
+  .led-fab:hover { transform: translateY(-2px); }
+  .led-fab:active { transform: scale(.96); }
 }
 </style>

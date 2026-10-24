@@ -19,6 +19,12 @@ const form = ref({ id: null, title: '', tags: '', html: '' })
 const editorRef = ref(null)
 
 const notes = computed(() => store.data.memos)
+const kw = ref('')
+const shownNotes = computed(() => {
+  const q = kw.value.trim().toLowerCase()
+  if (!q) return notes.value
+  return notes.value.filter((m) => (m.title || '').toLowerCase().includes(q) || (m.tags || []).join(' ').toLowerCase().includes(q) || (m.markdown || '').toLowerCase().includes(q))
+})
 
 function exec(cmd) { document.execCommand(cmd, false, null); editorRef.value && editorRef.value.focus() }
 // 真·复选框：插入标准 input[type=checkbox]，点击打勾/取消；无选区时只插空复选框，不插占位文字
@@ -54,8 +60,15 @@ function del(id) {
 
 <template>
   <div class="page wide">
+    <div class="page-head" style="flex-wrap:wrap;gap:10px">
+      <div class="search-bar" style="flex:1;min-width:160px;max-width:320px">
+        <Icon name="search" :size="16" />
+        <input v-model="kw" placeholder="搜索笔记标题 / 标签 / 内容…" />
+      </div>
+      <button class="add-btn" @click="openNew"><Icon name="plus" :size="16" /> 写笔记</button>
+    </div>
     <div class="cols-2">
-    <div v-for="m in notes" :key="m.id" class="glass list-item" @click="openEdit(m)">
+    <div v-for="m in shownNotes" :key="m.id" class="glass list-item" @click="openEdit(m)">
       <span class="avatar"><Icon name="note" :size="22" /></span>
       <div style="flex:1;min-width:0">
         <div style="font-weight:600">{{ m.title }}</div>
@@ -67,16 +80,12 @@ function del(id) {
       <button class="ghost-btn" @click.stop="del(m.id)"><Icon name="trash" :size="16" /></button>
     </div>
     </div>
-    <div v-if="!notes.length" class="glass card empty-state">
+    <div v-if="!shownNotes.length" class="glass card empty-state">
       <span class="empty-illu"><Icon name="note" :size="32" /></span>
       <div class="es-title">还没有笔记</div>
       <div class="es-sub">把灵感、复盘、摘抄记下来，人生会更有迹可循。</div>
       <button class="btn" @click="openNew"><Icon name="plus" :size="16" /> 写第一篇笔记</button>
     </div>
-
-    <button class="btn notes-fab" @click="openNew">
-      <Icon name="plus" :size="18" /> 写笔记
-    </button>
 
     <Modal title="笔记编辑" :show="showEdit" @close="showEdit = false">
       <div class="field"><label>标题</label><input v-model="form.title" placeholder="标题" /></div>

@@ -19,6 +19,12 @@ const hideDone = ref(false)
 const showAdd = ref(false)
 const batchMode = ref(false)
 const selected = ref(new Set())
+const kw = ref('')
+function taskMatch(t) {
+  const q = kw.value.trim().toLowerCase()
+  if (!q) return true
+  return (t.title || '').toLowerCase().includes(q) || (t.tags || []).join(' ').toLowerCase().includes(q)
+}
 
 // 编辑器：id=null 新建；携带 parentId 表示"给某任务添加子任务"
 // 新建时取消「类型」「进度」设置：分类随当前 Tab 自动决定，进度从 0 开始（需求 #17）
@@ -41,8 +47,8 @@ const orphans = computed(() => {
   return store.data.tasks.filter((t) => t.parentId && !ids.has(t.parentId) && t.category !== 'todo')
 })
 const roots = computed(() => dailyTasks.value.concat(orphans.value))
-function visibleRoots() { return hideDone.value ? roots.value.filter((t) => t.status !== 'done') : roots.value }
-function visibleTodo() { return hideDone.value ? todoTasks.value.filter((t) => t.status !== 'done') : todoTasks.value }
+function visibleRoots() { return (hideDone.value ? roots.value.filter((t) => t.status !== 'done') : roots.value).filter(taskMatch) }
+function visibleTodo() { return (hideDone.value ? todoTasks.value.filter((t) => t.status !== 'done') : todoTasks.value).filter(taskMatch) }
 function catLabel(c) { return (TASK_CATEGORY[c] || {}).label || c }
 function statusLabel(s) { return (TASK_STATUS[s] || {}).label || s }
 
@@ -105,16 +111,21 @@ function batchExport() {
 
 <template>
   <div class="page wide">
-    <div class="row between" style="margin-bottom:12px">
+    <div class="page-head" style="flex-wrap:wrap;gap:10px">
       <div class="capsule" style="padding:4px;gap:4px">
         <button class="btn ghost" :style="tab === 'daily' ? 'background:var(--eo-primary);color:#fff' : ''" @click="tab = 'daily'">日常</button>
         <button class="btn ghost" :style="tab === 'todo' ? 'background:var(--eo-primary);color:#fff' : ''" @click="tab = 'todo'">Todo</button>
       </div>
-      <div class="row" style="gap:8px">
+      <div class="row" style="gap:8px;flex:1;flex-wrap:wrap;justify-content:flex-end">
+        <div class="search-bar" style="flex:1;min-width:120px;max-width:220px">
+          <Icon name="search" :size="16" />
+          <input v-model="kw" placeholder="搜索标题 / 标签…" />
+        </div>
         <button class="chip" :style="hideDone ? 'background:var(--eo-primary);color:#fff' : ''" @click="hideDone = !hideDone">
           <Icon name="checklist" :size="14" /> 隐藏已完成
         </button>
         <button class="chip" @click="batchMode = !batchMode"><Icon name="layers" :size="14" /> 批量</button>
+        <button class="add-btn" @click="openEditor(null, null)"><Icon name="plus" :size="16" /> 新建</button>
       </div>
     </div>
 
@@ -124,7 +135,7 @@ function batchExport() {
         <TaskNode v-for="t in visibleRoots()" :key="t.id" :task="t" :depth="0" />
       </template>
       <template v-else>
-        <div v-for="t in store.data.tasks.filter((x) => x.category !== 'todo')" :key="t.id" class="glass list-item" @click="toggleSelect(t.id)">
+        <div v-for="t in store.data.tasks.filter((x) => x.category !== 'todo' && taskMatch(x))" :key="t.id" class="glass list-item" @click="toggleSelect(t.id)">
           <input type="checkbox" :checked="selected.has(t.id)" @click.stop="toggleSelect(t.id)" />
           <div style="flex:1;min-width:0">
             <div style="font-weight:600">{{ t.title }}</div>
@@ -178,10 +189,6 @@ function batchExport() {
       <button class="btn ghost" @click="batchExport"><Icon name="download" :size="16" /> 导出</button>
       <button class="btn danger" @click="batchDelete"><Icon name="trash" :size="16" /> 删除</button>
     </div>
-
-    <button v-if="!batchMode" class="btn" style="position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 96px);z-index:58" @click="openEditor(null, null)">
-      <Icon name="plus" :size="18" /> 新建任务
-    </button>
 
     <Modal :title="editor.id ? '编辑任务' : (editor.parentId ? '添加子任务' : '新建任务')" :show="showAdd" @close="showAdd = false">
       <div v-if="editor.parentId" class="muted" style="font-size:12px;margin-bottom:8px">将添加为「{{ (store.data.tasks.find((t) => t.id === editor.parentId) || {}).title }}」的子任务</div>

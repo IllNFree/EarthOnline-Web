@@ -48,22 +48,27 @@ export async function searchPlaces(query, city) {
   })
 }
 
-// 挂载地图到容器，返回 {map, onPick(cb)}；点击地图获取经纬度
+// 挂载地图到容器，返回 {map, onPick, onDblClick, setCenter, addMarker, clearMarkers, destroy}
 export async function mountMap(el, center) {
   const AMap = await loadAMap()
   const c = center && center.lat ? [center.lng, center.lat] : [116.397, 39.909]
   const map = new AMap.Map(el, { zoom: 12, center: c, viewMode: '2D' })
   let pickCb = null
+  let dblCb = null
+  const markers = []
   map.on('click', (e) => { if (pickCb) pickCb({ lng: e.lnglat.getLng(), lat: e.lnglat.getLat() }) })
+  map.on('dblclick', (e) => { if (dblCb) dblCb({ lng: e.lnglat.getLng(), lat: e.lnglat.getLat() }) })
   return {
     map,
     onPick(cb) { pickCb = cb },
-    setCenter(lng, lat) { map.setCenter([lng, lat]) },
+    onDblClick(cb) { dblCb = cb },
+    setCenter(lng, lat, zoom) { map.setCenter([lng, lat]); if (zoom) map.setZoom(zoom) },
     addMarker(lng, lat, name) {
       const m = new AMap.Marker({ position: [lng, lat], title: name || '' })
-      map.add(m)
+      map.add(m); markers.push(m)
       return m
     },
+    clearMarkers() { markers.forEach((m) => map.remove(m)); markers.length = 0 },
     destroy() { map.destroy() }
   }
 }
