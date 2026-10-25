@@ -3,7 +3,7 @@
 export const APP_INFO = {
   appName: '地球Online',
   version: '2.0.0',
-  buildDate: '2026-10-24',
+  buildDate: '2026-10-25',
   channel: 'web'
 }
 export const STORAGE_KEY = 'earth_data'
@@ -98,7 +98,9 @@ export function defaultState() {
     steam: { apiKey: '', steamId: '', proxy: '' },
     wallpaper: '',
     wallAlpha: 1,
-    cardAlpha: 1,
+    wallBlur: 0,
+    cardAlpha: 0.5,
+    glassAlphaMigrated: false,
     ledger: { records: [], expenseCategories: [], incomeCategories: [] },
     eggs: sanitizeEggs(null)
   }
@@ -132,19 +134,115 @@ export function sanitizeLedger(raw) {
 }
 
 // ---------- 更新日志（结构化，替代「本次更新/检查更新」） ----------
+// 版本号严格平滑递增：v1.0.0 → v1.0.6 → v1.0.7 … v1.0.9 → v1.1.0 … v1.9.0 → v2.0.0
 export const CHANGELOG = [
   {
-    version: '2.0.0', date: '2026-10-24',
+    version: '2.0.0', date: '2026-10-25',
     items: [
-      '全局液态玻璃材质：所有卡片强制毛玻璃 + 半透明白 + 高光白边，透出底层壁纸',
-      '主页真 3D 层叠卡片（拖拽切换、景深透视、页码随滑动更新）',
-      '速览改为主页内悬浮快捷操作：新任务 / 装背包 / 写笔记 / 传照片 / 记一笔 / 回收站',
-      '记账模块：多巴胺多色环形图 + 收支趋势柱状图 + 分类管理 + 胶囊按钮',
-      '列表页统一：添加按钮移至右上、全局搜索（标签/关键字）、卡片二次编辑',
-      '地图深度交互：双击建足迹、搜索切换「地点/足迹」、列表点击自动居中',
-      '主页卡片自适应：两栏可拖拽调节、同行动态等高、时间轴/动态限高滚动',
-      '空状态全面矢量插画化（Todo 补「轻松搞定琐碎小事」等治愈系文案）',
-      'Steam 入口精简、配置页输入框液态玻璃圆角化'
+      '全局文字对比度大幅加深：次要文字由浅灰调整为深墨色，大屏阅读清晰不刺眼',
+      '外观设置新增「壁纸模糊度」滑块（0–30px），背景可柔化、玻璃卡片上的文字更清晰',
+      '全局卡片默认不透明度调整为 50%，默认即可透出壁纸底图且不遮挡文字',
+      '隐私政策全面改版：补充高德地图 API、大模型 API、Steam API 等第三方服务的数据处理规范',
+      '记账页空状态重排：移除突兀的横向分割线，图标 / 文案 / 按钮干净居中',
+      '双端自适应持续完善：桌面 Web 与手机 PWA 共用一套设计语言'
+    ]
+  },
+  {
+    version: '1.9.0', date: '2026-10-24',
+    items: [
+      '更新日志排版重做：消除版本块之间的巨大空白断层，改用虚线分隔',
+      '更新日志独立 60vh 滚动容器 + 细窄滚动条，滚轮可从头连续长滚动',
+      '版本编年史补全：从 v1.0.0 到 v2.0.0 全量历史记录按版本号分段展示'
+    ]
+  },
+  {
+    version: '1.8.0', date: '2026-10-24',
+    items: [
+      '主页底部三卡绝对等高：日历 · 任务 / 人生时间轴 / 最近动态同行 stretch 对齐',
+      '卡片高度支持拖拽底边自由调节，高度偏好本地记忆',
+      '时间轴 / 最近动态内容过多时卡片内滚动，绝不撑破布局'
+    ]
+  },
+  {
+    version: '1.7.0', date: '2026-10-24',
+    items: [
+      '背包与收藏列表补齐矢量空状态插画与引导文案',
+      'Steam 游戏库入口移出收藏列表，独立置于页面右上角',
+      '记账页移除右下角悬浮 FAB，「记一笔」统一到右上角',
+      '全局添加按钮位置统一：各页面新增操作一律右上角'
+    ]
+  },
+  {
+    version: '1.6.0', date: '2026-10-24',
+    items: [
+      '记账新增近 12 个月收支趋势柱状图（绿=收入 / 红=支出）',
+      '账单明细彩色分类图标 + 虚线分隔 + 加粗金额',
+      '收支配色规范化：收入绿 #34C759 / 支出红 #FF3B30',
+      '分类管理入口前置，支持自定义支出 / 收入分类'
+    ]
+  },
+  {
+    version: '1.5.0', date: '2026-10-24',
+    items: [
+      '记账环形图升级为多巴胺多色配色，中心大字号显示当月总额',
+      '导出 / 导入改为胶囊按钮，账单区新增玻璃发光 FAB',
+      '月度概览顶部新增收入 / 支出 / 结余三栏居中汇总'
+    ]
+  },
+  {
+    version: '1.4.0', date: '2026-10-23',
+    items: [
+      '速览重构为主页内悬浮快捷操作：不再跳转页面',
+      '快捷入口重排为「新任务 → 装背包 → 写笔记 → 传照片 → 记一笔 → 回收站」',
+      '看板「最近照片」改为「今日成就」，实时显示今日解锁成就'
+    ]
+  },
+  {
+    version: '1.3.0', date: '2026-10-23',
+    items: [
+      '主页两栏宽度可拖拽调节：左 2/3 日历 · 任务 / 右 1/3 时间轴 + 动态',
+      '同行卡片 align-items:stretch 绝对等高，右栏数据过多时内部滚动',
+      '左右宽度偏好本地记忆'
+    ]
+  },
+  {
+    version: '1.2.0', date: '2026-10-23',
+    items: [
+      '主页数据卡升级为真 3D 层叠：透视 + z 轴景深 + 拖拽切换',
+      '层叠卡片页码随滑动实时更新，修复 1/6 页码显示异常',
+      '卡片高度自适应，层叠阴影随层级递减'
+    ]
+  },
+  {
+    version: '1.1.0', date: '2026-10-23',
+    items: [
+      '全局液态玻璃材质体系：毛玻璃 blur(16px) + 半透明白 + 1px 高光白边',
+      '镜面反光 + 指针聚光灯随鼠标移动，卡片 hover 提亮并轻微悬浮',
+      '图片渲染统一 object-fit:cover + 圆角 + overflow:hidden，杜绝变形拉伸'
+    ]
+  },
+  {
+    version: '1.0.9', date: '2026-10-22',
+    items: [
+      '地图深度交互：双击地图直接创建足迹',
+      '地图搜索支持「地点 / 足迹」双模式切换，足迹可按名称检索',
+      '足迹列表点击后地图自动居中并定位标记'
+    ]
+  },
+  {
+    version: '1.0.8', date: '2026-10-22',
+    items: [
+      '列表页交互统一：添加按钮移至右上角',
+      '全局搜索支持名称 / 标签 / 关键字多维过滤',
+      '所有卡片支持点击二次编辑，无需删除重建'
+    ]
+  },
+  {
+    version: '1.0.7', date: '2026-10-22',
+    items: [
+      '双端自适应基线：≥900px 电脑网站模式（侧边栏），<900px 手机 PWA 模式（底部悬浮导航）',
+      '手机端状态栏与安全区适配，触摸滚动更顺滑',
+      'PWA 离线缓存策略优化，弱网下仍可打开'
     ]
   },
   {
@@ -290,6 +388,11 @@ function clamp01(v, def) {
   if (!isFinite(n)) return def
   return Math.min(1, Math.max(0, n))
 }
+function clampNum(v, min, max, def) {
+  const n = Number(v)
+  if (!isFinite(n)) return def
+  return Math.min(max, Math.max(min, n))
+}
 export function sanitizeState(raw) {
   if (!raw || typeof raw !== 'object') return defaultState()
   const d = defaultState()
@@ -386,7 +489,10 @@ export function sanitizeState(raw) {
       : { apiKey: '', steamId: '', proxy: '' },
     wallpaper: str(raw.wallpaper, 3000000),
     wallAlpha: clamp01(raw.wallAlpha, 1),
-    cardAlpha: clamp01(raw.cardAlpha, 1),
+    wallBlur: clampNum(raw.wallBlur, 0, 30, 0),
+    // 卡片不透明度默认 50%；老数据（未迁移过）沿用旧默认 1，迁移一次后即可自由调节
+    cardAlpha: raw.glassAlphaMigrated ? clamp01(raw.cardAlpha, 0.5) : 0.5,
+    glassAlphaMigrated: true,
     ledger: sanitizeLedger(raw.ledger),
     eggs: sanitizeEggs(raw.eggs)
   }

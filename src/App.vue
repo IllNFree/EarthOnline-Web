@@ -17,12 +17,19 @@ const level = computed(() => xpLevelInfo(store.xp))
 // 双模式自适应：≥900px = 电脑网站（侧边栏），<900px = 手机 PWA（底部悬浮导航）
 const isDesktop = useMediaQuery('(min-width: 900px)')
 
-// 壁纸透出度：对齐 Android 公式 alpha × (深色 ? 0.4 : 1.0)
+// 壁纸透出度：对齐 Android 公式 alpha × (深色 ? 0.4 : 1.0)；模糊度由设置页「壁纸模糊度」控制
 const wallStyle = computed(() => {
   if (!store.data.wallpaper) return null
   const dark = document.documentElement.getAttribute('data-theme') === 'dark'
   const op = (Number(store.data.wallAlpha) || 0.5) * (dark ? 0.4 : 1.0)
-  return { backgroundImage: 'url(' + store.data.wallpaper + ')', opacity: op }
+  const blur = Number(store.data.wallBlur) || 0
+  const style = { backgroundImage: 'url(' + store.data.wallpaper + ')', opacity: op }
+  if (blur > 0) {
+    // 模糊会露出边缘空隙 → 轻微放大补偿
+    style.filter = 'blur(' + blur + 'px)'
+    style.transform = 'scale(' + (1 + blur / 160) + ')'
+  }
+  return style
 })
 
 const navItems = [

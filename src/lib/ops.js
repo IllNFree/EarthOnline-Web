@@ -291,7 +291,9 @@ export function setWallpaper(state, dataUrl) {
 }
 export function setAppearance(state, patch) {
   const cl = (v) => { const n = Number(v); return isFinite(n) ? Math.min(1, Math.max(0, n)) : null }
+  const cln = (v) => { const n = Number(v); return isFinite(n) ? Math.min(30, Math.max(0, n)) : null }
   if (patch && patch.wallAlpha !== undefined) { const v = cl(patch.wallAlpha); if (v !== null) state.wallAlpha = v }
+  if (patch && patch.wallBlur !== undefined) { const v = cln(patch.wallBlur); if (v !== null) state.wallBlur = v }
   if (patch && patch.cardAlpha !== undefined) { const v = cl(patch.cardAlpha); if (v !== null) state.cardAlpha = v }
 }
 export function setBirthDate(state, d) {

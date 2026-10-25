@@ -8,8 +8,11 @@
   --eo-bg: #F8F6F2;
   --eo-bg-2: #F0EBE4;
   --eo-ink: #1E1A16;
-  --eo-ink-soft: #55504B;
-  --eo-glass: rgba(255, 255, 255, 0.55);
+  /* 次要文字加深：#55504B → #3F3A34，保证大屏阅读清晰（对照 #666 更深） */
+  --eo-ink-soft: #3F3A34;
+  --eo-ink-faint: #6B645C;
+  /* 卡片默认半透明白 50%：能透出底图又不遮挡文字 */
+  --eo-glass: rgba(255, 255, 255, 0.50);
   --eo-glass-strong: rgba(255, 255, 255, 0.70);
   --eo-glass-border: rgba(214, 205, 192, 0.78);
   --eo-glass-hi: rgba(255, 255, 255, 0.95);
@@ -31,8 +34,10 @@
   --eo-bg: #1A1A1A;
   --eo-bg-2: #242019;
   --eo-ink: #F2EDE6;
-  --eo-ink-soft: #A89F94;
-  --eo-glass: rgba(40, 36, 30, 0.52);
+  /* 深色模式次要文字提亮：#A89F94 → #C0B7AA，提升对比度 */
+  --eo-ink-soft: #C0B7AA;
+  --eo-ink-faint: #9A9184;
+  --eo-glass: rgba(40, 36, 30, 0.50);
   --eo-glass-strong: rgba(40, 36, 30, 0.70);
   --eo-glass-border: rgba(232, 214, 190, 0.14);
   --eo-glass-hi: rgba(255, 235, 210, 0.20);
@@ -352,6 +357,8 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .between { justify-content: space-between; }
 .wrap { flex-wrap: wrap; }
 .muted { color: var(--eo-ink-soft); }
+/* 极弱提示（角标/时间戳/次要说明）用 faint 档，仍保持可读 */
+.faint { color: var(--eo-ink-faint); }
 .chip {
   display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px;
   border-radius: 999px; background: var(--eo-chip); font-size: 12px; color: var(--eo-primary-deep);

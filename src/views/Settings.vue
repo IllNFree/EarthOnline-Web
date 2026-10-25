@@ -75,11 +75,12 @@ function onWallFile(f) {
   r.readAsDataURL(f)
 }
 function clearWall() { store.setWallpaper(''); store.showToast('已恢复默认背景') }
-// 滑块用 0~100 整数百分比，落库存 0~1（数据层 clamp01）
+// 滑块用 0~100 整数百分比，落库存 0~1（数据层 clamp01）；壁纸模糊度用 0~30 px
 const wallPct = ref(Math.round((Number(store.data.wallAlpha) ?? 1) * 100))
-const cardPct = ref(Math.round((Number(store.data.cardAlpha) ?? 1) * 100))
+const wallBlur = ref(Number(store.data.wallBlur) || 0)
+const cardPct = ref(Math.round((Number(store.data.cardAlpha) ?? 0.5) * 100))
 function pushAppearance() {
-  store.setAppearance({ wallAlpha: wallPct.value / 100, cardAlpha: cardPct.value / 100 })
+  store.setAppearance({ wallAlpha: wallPct.value / 100, wallBlur: wallBlur.value, cardAlpha: cardPct.value / 100 })
   store.applyTheme()
 }
 
@@ -195,8 +196,14 @@ async function hardReset() {
         <input type="range" min="0" max="100" step="1" v-model.number="wallPct" @input="pushAppearance" style="width:100%" />
       </div>
       <div class="field">
+        <label>壁纸模糊度（{{ wallBlur }} px）</label>
+        <input type="range" min="0" max="30" step="1" v-model.number="wallBlur" @input="pushAppearance" style="width:100%" />
+        <div class="muted" style="font-size:12px;margin-top:4px">数值越大背景越柔化，玻璃卡片上的文字更清晰。</div>
+      </div>
+      <div class="field">
         <label>卡片不透明度（{{ cardPct }}%）</label>
         <input type="range" min="0" max="100" step="1" v-model.number="cardPct" @input="pushAppearance" style="width:100%" />
+        <div class="muted" style="font-size:12px;margin-top:4px">默认 50%，可透出壁纸底图且不遮挡文字。</div>
       </div>
     </div>
 

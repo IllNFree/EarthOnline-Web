@@ -276,7 +276,8 @@ const fmtDay = (d) => d.slice(5).replace('-', ' 月 ') + ' 日'
         <label class="btn ghost" style="padding:7px 12px;font-size:13px;cursor:pointer"><Icon name="upload" :size="14" /> 导入<input type="file" accept="application/json,.json" style="display:none" @change="importLedger" /></label>
       </div>
     </div>
-    <div class="glass card" style="padding:6px 14px">
+    <!-- 账单列表：仅在有记录时渲染容器（否则空玻璃卡会形成一条突兀横线） -->
+    <div v-if="shownRecords.length" class="glass card led-list">
       <div v-for="r in shownRecords" :key="r.id" class="led-row">
         <span class="led-cat" :style="'background:' + rowColor(r) + '22' + ';color:' + rowColor(r)">
           <Icon :name="r.type === 'income' ? 'coins' : 'wallet'" :size="20" />
@@ -291,11 +292,12 @@ const fmtDay = (d) => d.slice(5).replace('-', ' 月 ') + ' 日'
         <button class="ghost-btn" @click="del(r.id)"><Icon name="trash" :size="16" /></button>
       </div>
     </div>
-    <div v-if="!shownRecords.length" class="empty-state">
+    <!-- 空状态：独立容器，无边框 / 无分割线，图标与文案居中 -->
+    <div v-else class="led-empty">
       <span class="empty-illu"><Icon name="wallet" :size="32" /></span>
       <div class="es-title">本月还没有账单</div>
       <div class="es-sub">点右上角「记一笔」，记录第一笔收支</div>
-      <button class="btn" style="margin-top:6px" @click="openAdd"><Icon name="plus" :size="16" /> 记一笔</button>
+      <button class="btn" @click="openAdd"><Icon name="plus" :size="16" /> 记一笔</button>
     </div>
 
     <Modal title="记一笔" :show="showAdd" @close="showAdd = false">
@@ -368,4 +370,16 @@ const fmtDay = (d) => d.slice(5).replace('-', ' 月 ') + ' 日'
 @media (max-width: 640px) { .led-charts { flex-direction: column; align-items: stretch; } .led-donut { justify-content: center; } }
 .led-summary { display: flex; justify-content: center; gap: 30px; text-align: center; padding: 4px 0; }
 .led-summary .led-sum-item { min-width: 78px; }
+/* 账单列表容器：仅在有记录时出现 */
+.led-list { padding: 6px 14px; margin-bottom: 0; }
+/* 空状态：无边框、无分割线，纯留白 + 居中 */
+.led-empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center; padding: 34px 18px 30px; margin-top: 2px;
+  border: 0; background: none; box-shadow: none;
+}
+.led-empty .empty-illu { margin-bottom: 10px; }
+.led-empty .es-title { font-weight: 700; font-size: 15px; color: var(--eo-ink); }
+.led-empty .es-sub { font-size: 13px; color: var(--eo-ink-soft); line-height: 1.6; margin-top: 2px; }
+.led-empty .btn { margin-top: 14px; }
 </style>

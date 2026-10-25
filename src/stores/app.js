@@ -106,10 +106,11 @@ export const useAppStore = defineStore('app', () => {
   // 壁纸/卡片不透明度：对齐 Android（壁纸透出 = wallAlpha × (深色?0.4:1.0) 由视图层处理，这里输出玻璃基础 alpha）
   function applyAppearance(dark) {
     const base = dark ? '40, 36, 30' : '255, 253, 250'
-    const a = Math.min(1, Math.max(0.15, Number(data.cardAlpha) || 0.62))
+    const a = Math.min(1, Math.max(0.15, Number(data.cardAlpha) || 0.5))
     const r = document.documentElement.style
     r.setProperty('--eo-glass', 'rgba(' + base + ', ' + a + ')')
     r.setProperty('--eo-glass-strong', 'rgba(' + base + ', ' + Math.min(1, a + 0.18) + ')')
+    r.setProperty('--eo-wall-blur', (Number(data.wallBlur) || 0) + 'px')
   }
   function pushAi(role, content) {
     aiHistory.value.push({ id: 'm' + Date.now(), role, content, ts: Date.now() })
