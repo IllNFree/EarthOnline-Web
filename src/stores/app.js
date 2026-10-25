@@ -103,14 +103,31 @@ export const useAppStore = defineStore('app', () => {
     document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light')
     applyAppearance(dark)
   }
-  // 壁纸/卡片不透明度：对齐 Android（壁纸透出 = wallAlpha × (深色?0.4:1.0) 由视图层处理，这里输出玻璃基础 alpha）
+  // 外观参数：wallAlpha / cardAlpha 存的是「alpha 不透明度」(0=全透明, 1=全不透明)
+  // 注意：滑块展示的是「透明度」(0%=实体不透明, 100%=彻底透明)，两者互补，取值时需 1-x 翻转
   function applyAppearance(dark) {
-    const base = dark ? '40, 36, 30' : '255, 253, 250'
-    const a = Math.min(1, Math.max(0.15, Number(data.cardAlpha) || 0.5))
+    const raw = Number(data.cardAlpha)
+    const a = isFinite(raw) ? Math.min(1, Math.max(0, raw)) : 0.5
     const r = document.documentElement.style
+    // 玻璃质感随透明度同步淡出：alpha 越低，白底/边框/高光/聚光罩/毛玻璃一起收敛，100% 透明 = 彻底看不见
+    const sheen = Math.min(1, a * 2)          // alpha≥0.5 时质感满格，低于 0.5 线性淡出
+    const base = dark ? '40, 36, 30' : '255, 253, 250'
     r.setProperty('--eo-glass', 'rgba(' + base + ', ' + a + ')')
     r.setProperty('--eo-glass-strong', 'rgba(' + base + ', ' + Math.min(1, a + 0.18) + ')')
+    r.setProperty('--eo-glass-hi', dark
+      ? 'rgba(255, 235, 210, ' + (0.20 * sheen).toFixed(3) + ')'
+      : 'rgba(255, 255, 255, ' + (0.95 * sheen).toFixed(3) + ')')
+    r.setProperty('--eo-glass-border', dark
+      ? 'rgba(232, 214, 190, ' + (0.14 * sheen).toFixed(3) + ')'
+      : 'rgba(255, 255, 255, ' + (0.6 * sheen).toFixed(3) + ')')
+    r.setProperty('--eo-glass-sheen', sheen.toFixed(3))
+    // 完全透明时关闭毛玻璃，卡片彻底消失；否则保留 16px 雾化质感
+    r.setProperty('--eo-glass-blur', a < 0.02 ? '0px' : '16px')
     r.setProperty('--eo-wall-blur', (Number(data.wallBlur) || 0) + 'px')
+    // 卡片过于透明时给文字加一层浅色描边阴影，保证任何壁纸下都可读
+    r.setProperty('--eo-glass-text-shade', a < 0.42
+      ? (dark ? '0 1px 3px rgba(0,0,0,.6)' : '0 1px 3px rgba(255,255,255,.75)')
+      : 'none')
   }
   function pushAi(role, content) {
     aiHistory.value.push({ id: 'm' + Date.now(), role, content, ts: Date.now() })

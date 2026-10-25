@@ -16,6 +16,11 @@
   --eo-glass-strong: rgba(255, 255, 255, 0.70);
   --eo-glass-border: rgba(214, 205, 192, 0.78);
   --eo-glass-hi: rgba(255, 255, 255, 0.95);
+  /* 玻璃质感联动系数（由 store.applyAppearance 按卡片透明度动态写入） */
+  --eo-glass-sheen: 1;
+  --eo-glass-blur: 16px;
+  --eo-glass-text-shade: none;
+  --eo-wall-blur: 0px;
   --eo-shadow: 0 10px 30px -12px rgba(154, 124, 88, 0.28);
   --eo-shadow-soft: 0 6px 18px -10px rgba(154, 124, 88, 0.22);
   --eo-radius: 22px;
@@ -65,14 +70,15 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 input, textarea, select { font-family: inherit; color: inherit; }
 ::-webkit-scrollbar { width: 0; height: 0; }
 
-/* ---- 液态玻璃卡片（强制半透明白 + 高光白边 + 毛玻璃，透出底层壁纸） ---- */
+/* ---- 液态玻璃卡片（半透明白 + 高光白边 + 毛玻璃，透出底层壁纸） ----
+   透明度联动：--eo-glass-sheen 随卡片透明度淡出边框/高光/聚光罩；--eo-glass-blur 控制毛玻璃强度 */
 .glass {
   position: relative;
   overflow: hidden;
   background: var(--eo-glass);
-  backdrop-filter: blur(16px) saturate(165%);
-  -webkit-backdrop-filter: blur(16px) saturate(165%);
-  border: 1px solid rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(var(--eo-glass-blur, 16px)) saturate(165%);
+  -webkit-backdrop-filter: blur(var(--eo-glass-blur, 16px)) saturate(165%);
+  border: 1px solid var(--eo-glass-border);
   background-clip: padding-box;
   border-radius: var(--eo-radius);
   box-shadow:
@@ -94,9 +100,13 @@ input, textarea, select { font-family: inherit; color: inherit; }
     rgba(255, 255, 255, 0.14) 18%,
     transparent 42%, transparent 68%,
     rgba(255, 255, 255, 0.10) 100%);
-  opacity: .82; mix-blend-mode: screen;
+  opacity: calc(.82 * var(--eo-glass-sheen, 1));
+  mix-blend-mode: screen;
   transition: opacity .3s ease;
 }
+/* 卡片内文字：卡片过透明时叠加浅色描边阴影，保证任意壁纸上都可读 */
+.glass { text-shadow: var(--eo-glass-text-shade, none); }
+.glass button, .glass input, .glass textarea, .glass select { text-shadow: none; }
 @media (hover: hover) {
   /* 悬浮增强：聚光灯更亮 + 暖色微光晕，凸显动态质感 */
   .glass.card:hover::before, .glass.list-item:hover::before, .eo-card.glass:hover::before {
@@ -121,6 +131,7 @@ input, textarea, select { font-family: inherit; color: inherit; }
 /* 内发光描边：微弱高光环，代替生硬黑阴影 */
 .glass::after {
   content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  opacity: var(--eo-glass-sheen, 1);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16), inset 0 0 26px rgba(255, 255, 255, 0.06);
 }
 .glass-strong { background: var(--eo-glass-strong); border: 1px solid rgba(255, 255, 255, 0.6); }

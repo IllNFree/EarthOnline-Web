@@ -239,6 +239,12 @@ function relPos(i) {
   const n = stack.value.length
   return (i - stackIdx.value + n) % n
 }
+// 卡片完全透明时，景深后层的文字会透上来互相重叠 → 后层透明度随玻璃质感一起收敛
+const stackSheen = computed(() => {
+  const raw = Number(store.data.cardAlpha)
+  const a = isFinite(raw) ? Math.min(1, Math.max(0, raw)) : 0.5
+  return Math.min(1, a * 2)
+})
 function cardStyle(i) {
   const k = relPos(i)
   if (k > 2) return 'display:none'
@@ -248,7 +254,7 @@ function cardStyle(i) {
     1: 'translate3d(0,16px,-46px) scale(.94)',
     2: 'translate3d(0,30px,-92px) scale(.88)'
   }[k]
-  const opacity = { 0: 1, 1: .82, 2: .55 }[k]
+  const opacity = { 0: 1, 1: .82, 2: .55 }[k] * (k === 0 ? 1 : stackSheen.value)
   const shadow = {
     0: '0 24px 48px -20px rgba(154,124,88,.5)',
     1: '0 14px 30px -18px rgba(154,124,88,.3)',
@@ -256,6 +262,8 @@ function cardStyle(i) {
   }[k]
   let tf = t
   if (k === 0 && dragX.value) tf = 'translate3d(' + dragX.value + 'px,0,0) rotate(' + (dragX.value * 0.035) + 'deg) scale(1)'
+  // 卡片近乎全透明时，景深后层的文字会与前层重叠 → 直接隐藏后层，只保留当前卡
+  if (k > 0 && stackSheen.value < 0.3) return 'display:none'
   const pos = k === 0 ? 'position:relative;z-index:3' : 'position:absolute;left:0;right:0;top:0;z-index:' + (k === 1 ? 2 : 1) + ';pointer-events:auto'
   return 'display:block;' + pos + ';transform:' + tf + ';opacity:' + opacity + ';box-shadow:' + shadow + (k === 0 && dragging.value ? ';transition:none' : '')
 }

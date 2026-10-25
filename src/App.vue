@@ -17,11 +17,14 @@ const level = computed(() => xpLevelInfo(store.xp))
 // 双模式自适应：≥900px = 电脑网站（侧边栏），<900px = 手机 PWA（底部悬浮导航）
 const isDesktop = useMediaQuery('(min-width: 900px)')
 
-// 壁纸透出度：对齐 Android 公式 alpha × (深色 ? 0.4 : 1.0)；模糊度由设置页「壁纸模糊度」控制
+// 壁纸层：wallAlpha 存的是「不透明度 alpha」(0=完全透明看不见, 1=完全实体)
+// 滑块展示「透明度」(0%=实体, 100%=彻底透明)，因此这里用的是 1 - 透明度
 const wallStyle = computed(() => {
   if (!store.data.wallpaper) return null
   const dark = document.documentElement.getAttribute('data-theme') === 'dark'
-  const op = (Number(store.data.wallAlpha) || 0.5) * (dark ? 0.4 : 1.0)
+  const raw = Number(store.data.wallAlpha)
+  const alpha = isFinite(raw) ? Math.min(1, Math.max(0, raw)) : 1
+  const op = alpha * (dark ? 0.4 : 1.0)
   const blur = Number(store.data.wallBlur) || 0
   const style = { backgroundImage: 'url(' + store.data.wallpaper + ')', opacity: op }
   if (blur > 0) {

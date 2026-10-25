@@ -75,12 +75,22 @@ function onWallFile(f) {
   r.readAsDataURL(f)
 }
 function clearWall() { store.setWallpaper(''); store.showToast('已恢复默认背景') }
-// 滑块用 0~100 整数百分比，落库存 0~1（数据层 clamp01）；壁纸模糊度用 0~30 px
-const wallPct = ref(Math.round((Number(store.data.wallAlpha) ?? 1) * 100))
+// 滑块展示的是「透明度」：0% = 完全不透明（实体），100% = 完全透明（看不见）
+// 底层存的是 alpha 不透明度（0=全透明, 1=全实体），两者互补 → 写入时做 1 - x 翻转
+const toAlpha = (transparencyPct) => 1 - transparencyPct / 100
+const fromAlpha = (alpha, defAlpha = 1) => {
+  const n = Number(alpha)
+  return Math.round((1 - (isFinite(n) ? n : defAlpha)) * 100)
+}
+const wallPct = ref(fromAlpha(store.data.wallAlpha, 1))
 const wallBlur = ref(Number(store.data.wallBlur) || 0)
-const cardPct = ref(Math.round((Number(store.data.cardAlpha) ?? 0.5) * 100))
+const cardPct = ref(fromAlpha(store.data.cardAlpha, 0.5))
 function pushAppearance() {
-  store.setAppearance({ wallAlpha: wallPct.value / 100, wallBlur: wallBlur.value, cardAlpha: cardPct.value / 100 })
+  store.setAppearance({
+    wallAlpha: toAlpha(wallPct.value),
+    wallBlur: wallBlur.value,
+    cardAlpha: toAlpha(cardPct.value)
+  })
   store.applyTheme()
 }
 
@@ -192,8 +202,9 @@ async function hardReset() {
         </div>
       </div>
       <div class="field">
-        <label>壁纸不透明度（{{ wallPct }}%）</label>
+        <label>壁纸透明度（{{ wallPct }}%）</label>
         <input type="range" min="0" max="100" step="1" v-model.number="wallPct" @input="pushAppearance" style="width:100%" />
+        <div class="muted" style="font-size:12px;margin-top:4px">0% 为完全实体，100% 为彻底透明（看不见壁纸）。</div>
       </div>
       <div class="field">
         <label>壁纸模糊度（{{ wallBlur }} px）</label>
@@ -201,9 +212,9 @@ async function hardReset() {
         <div class="muted" style="font-size:12px;margin-top:4px">数值越大背景越柔化，玻璃卡片上的文字更清晰。</div>
       </div>
       <div class="field">
-        <label>卡片不透明度（{{ cardPct }}%）</label>
+        <label>卡片透明度（{{ cardPct }}%）</label>
         <input type="range" min="0" max="100" step="1" v-model.number="cardPct" @input="pushAppearance" style="width:100%" />
-        <div class="muted" style="font-size:12px;margin-top:4px">默认 50%，可透出壁纸底图且不遮挡文字。</div>
+        <div class="muted" style="font-size:12px;margin-top:4px">默认 50%：越往右越透底；卡片过透明时会自动为文字加浅色描边保证可读。</div>
       </div>
     </div>
 
