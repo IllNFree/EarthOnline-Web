@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAppStore } from '../stores/app.js'
 import { useDialogStore } from '../stores/dialog.js'
@@ -11,6 +11,9 @@ import Modal from '../components/GlassBottomSheet.vue'
 const store = useAppStore()
 const dialog = useDialogStore()
 const route = useRoute()
+// 右下角全局 FAB：在本页注册「添加物品 / 收藏」（跟随当前子页）
+onMounted(() => store.setQuickAdd(() => { showAdd.value = true }))
+onUnmounted(() => store.setQuickAdd(null))
 const sub = ref(route.query.sub === 'collection' ? 'collection' : 'item')
 const view = ref('grid')
 const showAdd = ref(false)
@@ -21,14 +24,14 @@ const kw = ref('')
 const coverBusy = ref(false)
 
 const items = computed(() => {
-  let list = store.data.items
+  let list = store.live.items
   const q = kw.value.trim().toLowerCase()
   if (q) list = list.filter((x) => (x.name || '').toLowerCase().includes(q) || (x.description || '').toLowerCase().includes(q) || (x.tags || []).join(' ').toLowerCase().includes(q))
   if (tagFilter.value) list = list.filter((x) => (x.tags || []).includes(tagFilter.value))
   return list
 })
 const collections = computed(() => {
-  let list = store.data.collections
+  let list = store.live.collections
   const q = kw.value.trim().toLowerCase()
   if (q) list = list.filter((x) => (x.title || '').toLowerCase().includes(q) || (x.description || '').toLowerCase().includes(q) || (x.url || '').toLowerCase().includes(q) || (x.tags || []).join(' ').toLowerCase().includes(q))
   if (tagFilter.value) list = list.filter((x) => (x.tags || []).includes(tagFilter.value))
@@ -68,8 +71,8 @@ function saveEdit() {
 // 全部条目的标签并集（供过滤 chips）
 const allTags = computed(() => {
   const s = new Set()
-  store.data.items.forEach((x) => (x.tags || []).forEach((t) => s.add(t)))
-  store.data.collections.forEach((x) => (x.tags || []).forEach((t) => s.add(t)))
+  store.live.items.forEach((x) => (x.tags || []).forEach((t) => s.add(t)))
+  store.live.collections.forEach((x) => (x.tags || []).forEach((t) => s.add(t)))
   return Array.from(s)
 })
 

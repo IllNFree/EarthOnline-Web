@@ -1,8 +1,9 @@
 import { defineStore } from 'pinia'
-import { reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { loadState, saveState, resetAll } from '../lib/storage.js'
-import { defaultState, sanitizeState, todayStr, APP_INFO } from '../lib/model.js'
+import { defaultState, sanitizeState, todayStr, APP_INFO, trashList } from '../lib/model.js'
 import { syncAchievements, totalXp } from '../lib/achievements.js'
+import { searchAll } from '../lib/search.js'
 import * as ops from '../lib/ops.js'
 
 const AI_HISTORY_KEY = 'eo_ai_history_v1'
@@ -24,6 +25,28 @@ export const useAppStore = defineStore('app', () => {
   const installPrompt = ref(null)
   const xp = ref(0)
 
+  // v2.0.0 P0：live 视图 = 过滤掉 deletedAt 的记录；业务 UI 一律读这里，回收站读 trashItems
+  const live = computed(() => ({
+    tasks: data.tasks.filter((x) => !x.deletedAt),
+    memos: data.memos.filter((x) => !x.deletedAt),
+    items: data.items.filter((x) => !x.deletedAt),
+    collections: data.collections.filter((x) => !x.deletedAt),
+    locations: data.locations.filter((x) => !x.deletedAt),
+    photos: data.photos.filter((x) => !x.deletedAt)
+  }))
+  // 回收站：由 deletedAt 实时派生（不再单独存 trash 数组）
+  const trashItems = computed(() => trashList(data))
+  // v2.0.0 P1：断网全局提示（对齐 Android NetworkMonitor 离线横幅）
+  const online = ref(typeof navigator === 'undefined' ? true : navigator.onLine)
+  // v2.0.0 P1：全局搜索（6 类聚合 + 直达路由）
+  const searchQuery = ref('')
+  const searchOpen = ref(false)
+  const searchResults = computed(() => (searchQuery.value.trim() ? searchAll(data, searchQuery.value) : []))
+  // v2.0.0 P1：全局新增 FAB —— 各列表页自行注册自己的「新增」动作，由右下角悬浮按钮触发
+  const quickAdd = ref(null)
+  function setQuickAdd(fn) { quickAdd.value = typeof fn === 'function' ? fn : null }
+  function runQuickAdd() { if (quickAdd.value) quickAdd.value() }
+
   let saveTimer = null
   function persist() {
     clearTimeout(saveTimer)
@@ -42,9 +65,36 @@ export const useAppStore = defineStore('app', () => {
     const s = await loadState()
     Object.assign(data, s)
     ops.ensureLedgerCategories(data)
+    // 启动时清一次过期回收站（30 天 TTL，与 Android 一样「冷启动 + 进页面」双触发）
+    ops.purgeExpiredTrash(data)
     ready.value = true
     recomputeXp()
+    bindNetwork()
   }
+
+  // ---- 网络状态监听（离线横幅 + 发送前离线拦截的数据源） ----
+  function bindNetwork() {
+    if (typeof window === 'undefined') return
+    window.addEventListener('online', () => { online.value = true })
+    window.addEventListener('offline', () => { online.value = false })
+    online.value = navigator.onLine
+  }
+  /** 发送/同步前调用：离线时给出人话提示并阻断 */
+  function requireOnline(what) {
+    if (online.value) return true
+    showToast('当前处于离线状态，' + (what || '该操作') + '需要联网后才能进行')
+    return false
+  }
+
+  function toggleSearch(open) {
+    searchOpen.value = open === undefined ? !searchOpen.value : !!open
+    if (!searchOpen.value) searchQuery.value = ''
+  }
+
+  // 数据变更订阅：书写操作完成（含持久化）后回调，用于 WebDAV 自动同步等副作用。
+  // 刻意不放在 lastSyncAt 写入路径上，避免「推送→记水位→再推送」死循环。
+  const changeListeners = []
+  function onDataChanged(fn) { if (typeof fn === 'function') changeListeners.push(fn) }
 
   // ---- 包裹业务操作：执行后重算成就/XP + 持久化 ----
   function wrap(fn) {
@@ -53,6 +103,7 @@ export const useAppStore = defineStore('app', () => {
       syncAchievements(data)
       recomputeXp()
       persist()
+      changeListeners.forEach((f) => { try { f() } catch (e) {} })
       return r
     }
   }
@@ -155,8 +206,10 @@ export const useAppStore = defineStore('app', () => {
   }
 
   return {
-    data, ready, theme, toast, aiHistory, installPrompt, xp,
-    init, persist, showToast, recomputeXp,
+    data, live, trashItems, ready, theme, toast, aiHistory, installPrompt, xp,
+    online, searchQuery, searchOpen, searchResults, quickAdd,
+    init, persist, showToast, recomputeXp, requireOnline, toggleSearch, onDataChanged,
+    setQuickAdd, runQuickAdd,
     ...actions,
     setTheme, applyTheme, pushAi, pushAiStreaming, appendAiToken, persistAi, clearAiHistory, hardReset,
     APP_INFO

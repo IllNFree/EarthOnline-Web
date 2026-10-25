@@ -102,11 +102,11 @@ function saveItem() {
 
 // ---- 今日数据看板 ----
 const dash = computed(() => {
-  const todayDue = store.data.tasks.filter((t) => t.dueDate === today && t.status !== 'done').length
-  const todayDone = store.data.tasks.filter((t) => t.doneAt && t.doneAt.slice(0, 10) === today).length
+  const todayDue = store.live.tasks.filter((t) => t.dueDate === today && t.status !== 'done').length
+  const todayDone = store.live.tasks.filter((t) => t.doneAt && t.doneAt.slice(0, 10) === today).length
   let inc = 0, exp = 0
   store.data.ledger.records.forEach((r) => { if (r.date === today) { if (r.type === 'income') inc += r.amount; else exp += r.amount } })
-  const lastMemo = (store.data.memos || []).slice().sort((a, b) => ((a.createdAt || '') < (b.createdAt || '') ? 1 : -1))[0]
+  const lastMemo = (store.live.memos || []).slice().sort((a, b) => ((a.createdAt || '') < (b.createdAt || '') ? 1 : -1))[0]
   const todayAch = (store.data.achievements || []).filter((a) => a.unlockedAt === today)
   const lastAch = todayAch.slice().sort((a, b) => (a.unlockedAt < b.unlockedAt ? 1 : -1))[0]
   return { todayDue, todayDone, balance: inc - exp, todayAch, lastAch, lastMemo }
@@ -120,7 +120,7 @@ const fmt = (d) => d.getFullYear() + '-' + p2d(d.getMonth() + 1) + '-' + p2d(d.g
 const calTitle = computed(() => calBase.value.getFullYear() + ' 年 ' + (calBase.value.getMonth() + 1) + ' 月')
 const dueMap = computed(() => {
   const m = {}
-  store.data.tasks.forEach((t) => {
+  store.live.tasks.forEach((t) => {
     if (t.dueDate) { if (!m[t.dueDate]) m[t.dueDate] = []; m[t.dueDate].push(t) }
   })
   return m
@@ -179,8 +179,8 @@ const greeting = computed(() => {
 const recent = computed(() => (store.data.activities || []).slice(0, 8))
 const timeline = computed(() => {
   const arr = []
-  ;(store.data.memos || []).forEach((m) => arr.push({ date: m.createdAt, icon: 'note', text: '笔记：' + (m.title || '无标题') }))
-  ;(store.data.locations || []).forEach((l) => arr.push({ date: l.date, icon: 'map-pin', text: '足迹：' + l.name }))
+  ;(store.live.memos || []).forEach((m) => arr.push({ date: m.createdAt, icon: 'note', text: '笔记：' + (m.title || '无标题') }))
+  ;(store.live.locations || []).forEach((l) => arr.push({ date: l.date, icon: 'map-pin', text: '足迹：' + l.name }))
   return arr.sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 10)
 })
 function statusLabelOf(s) { return ({ planning: '规划中', active: '进行中', paused: '搁置', done: '已完成' })[s] || s }
@@ -212,22 +212,22 @@ const stack = computed(() => {
     big: (inc - exp).toFixed(0), unit: '元结余',
     sub: '收入 ' + inc.toFixed(0) + ' · 支出 ' + exp.toFixed(0)
   })
-  const lastMemo = (store.data.memos || []).slice().sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))[0]
+  const lastMemo = (store.live.memos || []).slice().sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))[0]
   cards.push({
     icon: 'note', tint: 'accent', title: '笔记',
-    big: String(store.data.memos.length), unit: '篇',
+    big: String(store.live.memos.length), unit: '篇',
     sub: lastMemo ? (lastMemo.title || '无标题') : '还没有笔记'
   })
-  const lastPhoto = (store.data.photos || []).slice().sort((a, b) => ((a.createdAt || '') < (b.createdAt || '') ? 1 : -1))[0]
+  const lastPhoto = (store.live.photos || []).slice().sort((a, b) => ((a.createdAt || '') < (b.createdAt || '') ? 1 : -1))[0]
   cards.push({
     icon: 'album', tint: 'primary', title: '相册',
-    big: String(store.data.photos.length), unit: '张回忆',
+    big: String(store.live.photos.length), unit: '张回忆',
     sub: lastPhoto ? '最近一张：' + (lastPhoto.name || '') : '还没有照片'
   })
-  const lastLoc = (store.data.locations || []).slice().sort((a, b) => (a.date < b.date ? 1 : -1))[0]
+  const lastLoc = (store.live.locations || []).slice().sort((a, b) => (a.date < b.date ? 1 : -1))[0]
   cards.push({
     icon: 'map-pin', tint: 'good', title: '足迹',
-    big: String(store.data.locations.length), unit: '个地点',
+    big: String(store.live.locations.length), unit: '个地点',
     sub: lastLoc ? lastLoc.name + ' · ' + lastLoc.date : '还没有足迹'
   })
   return cards

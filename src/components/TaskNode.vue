@@ -20,7 +20,7 @@ const openEditor = inject('taskEditor', null)
 
 const open = ref(true)
 const showNote = ref(false)
-const children = computed(() => store.data.tasks.filter((t) => t.parentId === props.task.id))
+const children = computed(() => store.live.tasks.filter((t) => t.parentId === props.task.id))
 
 function catLabel(c) { return (TASK_CATEGORY[c] || {}).label || c }
 function statusLabel(s) { return (TASK_STATUS[s] || {}).label || s }
@@ -33,7 +33,7 @@ function collectSubtreeIds(root) {
   while (stack.length) {
     const id = stack.pop()
     out.push(id)
-    store.data.tasks.filter((t) => t.parentId === id).forEach((c) => stack.push(c.id))
+    store.live.tasks.filter((t) => t.parentId === id).forEach((c) => stack.push(c.id))
   }
   return out
 }

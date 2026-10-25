@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, nextTick, onMounted } from 'vue'
+import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAppStore } from '../stores/app.js'
 import { useDialogStore } from '../stores/dialog.js'
@@ -11,14 +11,19 @@ const store = useAppStore()
 const dialog = useDialogStore()
 const route = useRoute()
 // 主页速览「写笔记」直达：自动弹开新建笔记窗口
-onMounted(() => { if (route.query.add) openNew() })
+onMounted(() => {
+  if (route.query.add) openNew()
+  // 右下角全局 FAB：在本页注册「写笔记」（对齐 Android NotesScreen FAB）
+  store.setQuickAdd(() => openNew())
+})
+onUnmounted(() => store.setQuickAdd(null))
 const showEdit = ref(false)
 const editing = ref(null)
 // 取消默认分类：类型与标签合并为纯用户自定义标签（需求 #15）
 const form = ref({ id: null, title: '', tags: '', html: '' })
 const editorRef = ref(null)
 
-const notes = computed(() => store.data.memos)
+const notes = computed(() => store.live.memos)
 const kw = ref('')
 const shownNotes = computed(() => {
   const q = kw.value.trim().toLowerCase()

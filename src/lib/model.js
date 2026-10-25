@@ -9,6 +9,76 @@ export const APP_INFO = {
 export const STORAGE_KEY = 'earth_data'
 export const TRASH_TTL_DAYS = 30
 export const TRASH_KINDS = ['task', 'item', 'collection', 'memo', 'location', 'photo']
+// v2.0.0 P0：软删除模型改为与 Android 同构的 deletedAt 字段（实体留在本集合内，打时间戳标记）
+// 旧模型是「搬进 trash[] 数组」，会导致跨端合并出幽灵数据，此处保留 TRASH_KINDS 仅用于兼容迁移
+export const SOFT_KIND_MAP = {
+  task: 'tasks', item: 'items', collection: 'collections',
+  memo: 'memos', location: 'locations', photo: 'photos'
+}
+export const SOFT_KINDS = Object.keys(SOFT_KIND_MAP)
+
+/** 是否已软删除 */
+export function isDeleted(x) { return !!x && !!x.deletedAt }
+/** 取出某集合的未删除记录 */
+export function liveList(state, key) { return (state[key] || []).filter((x) => !isDeleted(x)) }
+
+function expireOf(deletedAt) {
+  const d = new Date(deletedAt)
+  if (isNaN(d)) return ''
+  d.setDate(d.getDate() + TRASH_TTL_DAYS)
+  const p = (n) => String(n).padStart(2, '0')
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate())
+}
+
+/** 回收站视图：由各集合内带 deletedAt 的实体实时派生，不再单独维护 trash[] */
+export function trashList(state) {
+  const out = []
+  SOFT_KINDS.forEach((kind) => {
+    ;(state[SOFT_KIND_MAP[kind]] || []).forEach((rec) => {
+      if (!isDeleted(rec)) return
+      out.push({ id: rec.id, kind, data: rec, deletedAt: rec.deletedAt, expireAt: expireOf(rec.deletedAt) })
+    })
+  })
+  return out.sort((a, b) => (a.deletedAt < b.deletedAt ? 1 : -1))
+}
+
+/** 清理过期（超过 30 天）的软删除记录 —— 真正物理移除 */
+export function purgeExpiredSoftDeleted(state) {
+  const now = new Date().toISOString().slice(0, 10)
+  let n = 0
+  SOFT_KINDS.forEach((kind) => {
+    const key = SOFT_KIND_MAP[kind]
+    const arr = state[key]
+    if (!Array.isArray(arr)) return
+    for (let i = arr.length - 1; i >= 0; i--) {
+      const rec = arr[i]
+      if (!isDeleted(rec)) continue
+      const exp = expireOf(rec.deletedAt)
+      if (!exp || exp <= now) { arr.splice(i, 1); n++ }
+    }
+  })
+  return n
+}
+
+/**
+ * 迁移：把旧模型 trash[] 里的记录搬回各自集合并补 deletedAt。
+ * 老用户升级后回收站内容不丢，之后统一走 deletedAt 口径。
+ */
+export function migrateTrashToDeletedAt(state) {
+  const legacy = Array.isArray(state.trash) ? state.trash : []
+  legacy.forEach((t) => {
+    const key = SOFT_KIND_MAP[t && t.kind]
+    if (!key || !Array.isArray(state[key])) return
+    const rec = t.data && typeof t.data === 'object' ? t.data : null
+    if (!rec || !rec.id) return
+    if (state[key].some((x) => x.id === rec.id)) return
+    rec.deletedAt = rec.deletedAt || t.deletedAt || ''
+    if (!rec.deletedAt) return
+    state[key].push(rec)
+  })
+  state.trash = []
+  return state
+}
 
 export const TASK_CATEGORY = {
   main: { label: '主线', cls: 'cat-main' },
@@ -99,8 +169,13 @@ export function defaultState() {
     wallpaper: '',
     wallAlpha: 1,
     wallBlur: 0,
-    cardAlpha: 0.5,
-    glassAlphaMigrated: false,
+    // v2.0.0 P0-6：卡片不透明度出厂默认与 Android 对齐 —— 80%（原 Web 为 50%）
+    cardAlpha: 0.8,
+    glassAlphaMigrated: true,
+    // v2.0.0 一次性迁移标记：把历史用户（含出厂 50%）统一拉到 80% 基线，之后尊重用户手调值
+    cardAlphaV2: true,
+    // v2.0.0 P0-1：WebDAV 同步水位线，用于拉云备份前的冲突比对（与 Android lastSyncAt 同语义）
+    lastSyncAt: '',
     ledger: { records: [], expenseCategories: [], incomeCategories: [] },
     eggs: sanitizeEggs(null)
   }
@@ -412,7 +487,8 @@ export function sanitizeState(raw) {
       createdAt: str(t.createdAt, 30) || todayStr(),
       lastModified: str(t.lastModified, 30) || todayStr(),
       doneAt: t.doneAt || null,
-      tags: parseTagsInput(t.tags)
+      tags: parseTagsInput(t.tags),
+      deletedAt: t.deletedAt || null
     })),
     memos: arrOf(raw.memos).filter((m) => m && typeof m === 'object').map((m) => ({
       id: str(m.id) || uid('memo'),
@@ -421,7 +497,8 @@ export function sanitizeState(raw) {
       type: MEMO_TYPE[m.type] ? m.type : 'note',
       tags: parseTagsInput(m.tags),
       createdAt: str(m.createdAt, 30) || todayStr(),
-      updatedAt: str(m.updatedAt, 30) || todayStr()
+      updatedAt: str(m.updatedAt, 30) || todayStr(),
+      deletedAt: m.deletedAt || null
     })),
     items: arrOf(raw.items).filter((i) => i && typeof i === 'object').map((i) => ({
       id: str(i.id) || uid('item'),
@@ -432,7 +509,8 @@ export function sanitizeState(raw) {
       description: str(i.description, 20000),
       cover: str(i.cover, 200000),
       tags: parseTagsInput(i.tags),
-      createdAt: str(i.createdAt, 30) || todayStr()
+      createdAt: str(i.createdAt, 30) || todayStr(),
+      deletedAt: i.deletedAt || null
     })),
     achievements: arrOf(raw.achievements).filter((a) => a && typeof a === 'object').map((a) => ({
       key: str(a.key), unlockedAt: str(a.unlockedAt, 30) || todayStr()
@@ -449,7 +527,8 @@ export function sanitizeState(raw) {
         ? { name: str(c.fileMeta.name, 200), mime: str(c.fileMeta.mime, 120), size: Number(c.fileMeta.size) || 0, dataUrl: str(c.fileMeta.dataUrl, 8000000) }
         : null,
       tags: parseTagsInput(c.tags),
-      createdAt: str(c.createdAt, 30) || todayStr()
+      createdAt: str(c.createdAt, 30) || todayStr(),
+      deletedAt: c.deletedAt || null
     })),
     activities: arrOf(raw.activities).filter((a) => a && typeof a === 'object').map((a) => ({
       id: str(a.id) || uid('act'), icon: str(a.icon, 20), text: str(a.text, 300), time: str(a.time, 30) || todayStr()
@@ -467,7 +546,8 @@ export function sanitizeState(raw) {
       lat: Number(l.lat), lng: Number(l.lng),
       date: /^\d{4}-\d{2}-\d{2}$/.test(l.date) ? l.date : todayStr(),
       note: str(l.note, 20000),
-      tags: parseTagsInput(l.tags)
+      tags: parseTagsInput(l.tags),
+      deletedAt: l.deletedAt || null
     })),
     photos: arrOf(raw.photos).filter((p) => p && typeof p === 'object' && String(p.dataUrl || '').startsWith('data:')).map((p) => ({
       id: str(p.id) || uid('photo'),
@@ -475,7 +555,8 @@ export function sanitizeState(raw) {
       category: str(p.category, 60),
       dataUrl: str(p.dataUrl, 3000000),
       tags: parseTagsInput(p.tags),
-      createdAt: str(p.createdAt, 30) || todayStr()
+      createdAt: str(p.createdAt, 30) || todayStr(),
+      deletedAt: p.deletedAt || null
     })),
     ledgerOpened: !!raw.ledgerOpened,
     itemCategories: arrOf(raw.itemCategories).filter((c) => c && typeof c === 'object' && str(c.name)).map((c) => ({ name: str(c.name, 60), icon: str(c.icon, 20) })),
@@ -490,12 +571,17 @@ export function sanitizeState(raw) {
     wallpaper: str(raw.wallpaper, 3000000),
     wallAlpha: clamp01(raw.wallAlpha, 1),
     wallBlur: clampNum(raw.wallBlur, 0, 30, 0),
-    // 卡片不透明度默认 50%；老数据（未迁移过）沿用旧默认 1，迁移一次后即可自由调节
-    cardAlpha: raw.glassAlphaMigrated ? clamp01(raw.cardAlpha, 0.5) : 0.5,
+    // v2.0.0 P0-6：卡片不透明度与 Android LocalCardOpacity=0.8f 对齐。
+    // 未打过 v2 标记的历史存档（出厂 50%）一律强制拉到 80%，标记后尊重用户手调值。
+    cardAlpha: raw.cardAlphaV2 ? clamp01(raw.cardAlpha, 0.8) : 0.8,
     glassAlphaMigrated: true,
+    cardAlphaV2: true,
+    lastSyncAt: str(raw.lastSyncAt, 40),
     ledger: sanitizeLedger(raw.ledger),
     eggs: sanitizeEggs(raw.eggs)
   }
+  // 旧模型 trash[] → 新模型 deletedAt（记录搬回各自集合，回收站内容不丢）
+  migrateTrashToDeletedAt(s)
   return s
 }
 

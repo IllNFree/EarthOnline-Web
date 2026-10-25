@@ -1,16 +1,12 @@
 // ===== 业务操作层：就地修改 state，由 store 负责持久化 =====
 import {
   uid, todayStr, clampProgress, parseTagsInput, pushActivity, TASK_CATEGORY, TASK_STATUS,
-  TRASH_TTL_DAYS, TRASH_KINDS, LEDGER_EXPENSE_PRESET, LEDGER_INCOME_PRESET
+  TRASH_TTL_DAYS, TRASH_KINDS, LEDGER_EXPENSE_PRESET, LEDGER_INCOME_PRESET,
+  SOFT_KIND_MAP, SOFT_KINDS, isDeleted, purgeExpiredSoftDeleted
 } from './model.js'
 import { syncAchievements } from './achievements.js'
 
-function daysFromNow(n) {
-  const d = new Date()
-  d.setDate(d.getDate() + n)
-  const p = (x) => String(x).padStart(2, '0')
-  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate())
-}
+function nowIso() { return new Date().toISOString() }
 export function trashKindLabel(kind) {
   return ({ task: '任务', item: '物品', collection: '收藏', memo: '笔记', location: '足迹', photo: '相册' })[kind] || kind
 }
@@ -64,9 +60,9 @@ export function toggleTaskDone(state, id) {
   return updateTask(state, id, { status: next })
 }
 export function deleteTask(state, id) {
-  const idx = state.tasks.findIndex((x) => x.id === id)
-  if (idx < 0) return false
-  return softDeleteToTrash(state, 'task', state.tasks.splice(idx, 1)[0])
+  const t = state.tasks.find((x) => x.id === id)
+  if (!t) return false
+  return softDelete(state, 'task', t)
 }
 
 export function addMemo(state, data) {
@@ -97,9 +93,9 @@ export function updateMemo(state, id, patch) {
   return m
 }
 export function deleteMemo(state, id) {
-  const idx = state.memos.findIndex((x) => x.id === id)
-  if (idx < 0) return false
-  return softDeleteToTrash(state, 'memo', state.memos.splice(idx, 1)[0])
+  const m = state.memos.find((x) => x.id === id)
+  if (!m) return false
+  return softDelete(state, 'memo', m)
 }
 
 export function addItem(state, data) {
@@ -133,9 +129,9 @@ export function updateItem(state, id, patch) {
   return it
 }
 export function deleteItem(state, id) {
-  const idx = state.items.findIndex((x) => x.id === id)
-  if (idx < 0) return false
-  return softDeleteToTrash(state, 'item', state.items.splice(idx, 1)[0])
+  const it = state.items.find((x) => x.id === id)
+  if (!it) return false
+  return softDelete(state, 'item', it)
 }
 
 export function addCollection(state, data) {
@@ -175,9 +171,9 @@ export function updateCollection(state, id, patch) {
   return c
 }
 export function deleteCollection(state, id) {
-  const idx = state.collections.findIndex((x) => x.id === id)
-  if (idx < 0) return false
-  return softDeleteToTrash(state, 'collection', state.collections.splice(idx, 1)[0])
+  const c = state.collections.find((x) => x.id === id)
+  if (!c) return false
+  return softDelete(state, 'collection', c)
 }
 
 export function addLocation(state, data) {
@@ -203,46 +199,68 @@ export function updateLocation(state, id, patch) {
   return l
 }
 export function deleteLocation(state, id) {
-  const idx = state.locations.findIndex((x) => x.id === id)
-  if (idx < 0) return false
-  return softDeleteToTrash(state, 'location', state.locations.splice(idx, 1)[0])
+  const l = state.locations.find((x) => x.id === id)
+  if (!l) return false
+  return softDelete(state, 'location', l)
 }
 
-// ---------- 回收站 ----------
-export function softDeleteToTrash(state, kind, data) {
-  if (!TRASH_KINDS.includes(kind)) return false
-  state.trash.push({
-    id: uid('tr'), kind, data,
-    deletedAt: todayStr(),
-    expireAt: daysFromNow(TRASH_TTL_DAYS)
-  })
+// ---------- 回收站（v2.0.0 P0：deletedAt 软删除，与 Android 实体列同构） ----------
+/**
+ * 软删除：记录**留在原集合**，只打 deletedAt 时间戳。
+ * 这样：① 各业务列表用 live 视图自动过滤；② 回收站由 trashList() 实时派生；
+ * ③ 与 Android Room 的 deletedAt 列语义完全一致，跨端合并不会出幽灵数据。
+ */
+export function softDelete(state, kind, rec) {
+  if (!rec || !SOFT_KIND_MAP[kind]) return false
+  rec.deletedAt = nowIso()
   syncAchievements(state)
   return true
 }
+
+/** 兼容旧名：历史上直接传实体的调用点仍可用 */
+export function softDeleteToTrash(state, kind, rec) { return softDelete(state, kind, rec) }
+
+/** 恢复：清掉 deletedAt，记录立刻回到正常列表 */
 export function restoreFromTrash(state, trashId) {
-  const idx = state.trash.findIndex((t) => t.id === trashId)
-  if (idx < 0) return false
-  const t = state.trash[idx]
-  const arr = { task: state.tasks, item: state.items, collection: state.collections, memo: state.memos, location: state.locations, photo: state.photos }[t.kind]
-  if (arr && Array.isArray(t.data)) arr.push(...t.data)
-  else if (arr) arr.push(t.data)
-  state.trash.splice(idx, 1)
+  let hit = null
+  SOFT_KINDS.forEach((kind) => {
+    const arr = state[SOFT_KIND_MAP[kind]]
+    if (!Array.isArray(arr)) return
+    const rec = arr.find((x) => x.id === trashId && isDeleted(x))
+    if (rec) hit = rec
+  })
+  if (!hit) return false
+  hit.deletedAt = null
+  syncAchievements(state)
   return true
 }
+
+/** 彻底删除：从集合里真正移除 */
 export function purgeTrashEntry(state, trashId) {
-  const idx = state.trash.findIndex((t) => t.id === trashId)
-  if (idx < 0) return false
-  state.trash.splice(idx, 1)
-  return true
+  let removed = false
+  SOFT_KINDS.forEach((kind) => {
+    const key = SOFT_KIND_MAP[kind]
+    const arr = state[key]
+    if (!Array.isArray(arr)) return
+    const idx = arr.findIndex((x) => x.id === trashId && isDeleted(x))
+    if (idx >= 0) { arr.splice(idx, 1); removed = true }
+  })
+  return removed
 }
+
+/** 清空回收站：移除全部软删除记录 */
 export function emptyTrash(state) {
-  state.trash = []
+  SOFT_KINDS.forEach((kind) => {
+    const key = SOFT_KIND_MAP[kind]
+    if (!Array.isArray(state[key])) return
+    state[key] = state[key].filter((x) => !isDeleted(x))
+  })
   return true
 }
+
+/** 过期清理：软删除超过 30 天的记录物理移除（对齐回收站 TTL） */
 export function purgeExpiredTrash(state) {
-  const now = todayStr()
-  state.trash = state.trash.filter((t) => t.expireAt > now)
-  return true
+  return purgeExpiredSoftDeleted(state) >= 0
 }
 
 export function addPhoto(state, data) {
@@ -261,9 +279,9 @@ export function addPhoto(state, data) {
   return { ok: true, error: '', photo }
 }
 export function deletePhoto(state, id) {
-  const idx = state.photos.findIndex((x) => x.id === id)
-  if (idx < 0) return false
-  return softDeleteToTrash(state, 'photo', state.photos.splice(idx, 1)[0])
+  const p = state.photos.find((x) => x.id === id)
+  if (!p) return false
+  return softDelete(state, 'photo', p)
 }
 export function updatePhoto(state, id, patch) {
   const p = state.photos.find((x) => x.id === id)

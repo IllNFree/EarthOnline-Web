@@ -1,6 +1,6 @@
 <script setup>
 // 记账模块：收支记录 / 分类 / 月度概览（含分类环形图）
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAppStore } from '../stores/app.js'
 import { useDialogStore } from '../stores/dialog.js'
@@ -16,11 +16,14 @@ const form = ref({ type: 'expense', amount: '', category: '', note: '', date: ''
 const amountInput = ref(null)
 // 主页速览「记一笔」直达：自动弹开记账窗口并聚焦金额输入框
 onMounted(() => {
+  // 右下角全局 FAB：在本页注册「记一笔」
+  store.setQuickAdd(() => openAdd())
   if (route.query.add) {
     openAdd()
     nextTick(() => amountInput.value && amountInput.value.focus())
   }
 })
+onUnmounted(() => store.setQuickAdd(null))
 
 const monthBase = ref(new Date())
 const p2 = (n) => String(n).padStart(2, '0')

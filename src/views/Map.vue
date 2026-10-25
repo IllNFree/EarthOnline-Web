@@ -71,7 +71,7 @@ async function doSearch() {
   if (searchMode.value === 'footprint') {
     // 本地足迹搜索：按名称 / 标签 / 备注过滤
     const q = query.value.trim().toLowerCase()
-    results.value = store.data.locations
+    results.value = store.live.locations
       .filter((l) => (l.name || '').toLowerCase().includes(q) || (l.tags || []).join(' ').toLowerCase().includes(q) || (l.note || '').toLowerCase().includes(q))
       .map((l) => ({ id: l.id, name: l.name, address: (l.tags || []).join(' / ') || l.note || '', location: { lng: l.lng, lat: l.lat } }))
     searching.value = false
@@ -149,14 +149,14 @@ async function removeLoc(id) {
     </div>
 
     <div style="padding:12px 16px 28px">
-      <div class="section-title" style="margin-top:0">我的足迹（{{ store.data.locations.length }}）</div>
-      <div v-if="!store.data.locations.length" class="glass card empty-state">
+      <div class="section-title" style="margin-top:0">我的足迹（{{ store.live.locations.length }}）</div>
+      <div v-if="!store.live.locations.length" class="glass card empty-state">
         <span class="empty-illu"><Icon name="globe" :size="32" /></span>
         <div class="es-title">还没有足迹</div>
         <div class="es-sub">在上方搜索一个地点并点击结果，或直接在地图上点选位置，即可留下第一枚足迹。</div>
         <button class="btn" @click="searchInput && searchInput.focus()"><Icon name="search" :size="16" /> 搜索一个地点</button>
       </div>
-      <div v-for="l in store.data.locations" :key="l.id" class="glass list-item" @click="focusLocation(l)">
+      <div v-for="l in store.live.locations" :key="l.id" class="glass list-item" @click="focusLocation(l)">
         <span class="avatar"><Icon name="location" :size="20" /></span>
         <div style="flex:1;min-width:0"><div style="font-weight:600">{{ l.name }}</div><div class="muted" style="font-size:12px">{{ l.date }} · {{ l.lat.toFixed(3) }},{{ l.lng.toFixed(3) }}</div></div>
         <button class="ghost-btn" @click.stop="removeLoc(l.id)"><Icon name="trash" :size="16" /></button>

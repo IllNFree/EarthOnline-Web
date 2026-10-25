@@ -43,7 +43,7 @@ const totalTime = computed(() => games.value.reduce((s, g) => s + (g.playtimeHou
         </div>
         <div class="st-hint">
           <Icon name="shield" :size="14" />
-          <span>Web 端仅支持云端数据。Steam Web API 默认不开放浏览器跨域(CORS)，如拉取失败请填写可信的 CORS 代理前缀。</span>
+          <span>Web 端仅支持云端数据。应用已内置 Steam 代理，通常可直接拉取；如自建部署缺少代理，可在下方填写自定义代理前缀。</span>
         </div>
         <!-- 纵向 Flex 表单：标签在上、输入框独占整行，长文本永远完整换行 -->
         <div class="st-form">

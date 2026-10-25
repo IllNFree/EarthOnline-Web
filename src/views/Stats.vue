@@ -11,11 +11,11 @@ const today = todayStr()
 const level = computed(() => xpLevelInfo(store.xp))
 
 const overview = computed(() => ([
-  { icon: 'tasks', label: '任务', value: store.data.tasks.length, sub: store.data.tasks.filter((t) => t.status === 'done').length + ' 已完成' },
-  { icon: 'note', label: '笔记', value: store.data.memos.length, sub: '条记录' },
-  { icon: 'backpack', label: '物品/收藏', value: store.data.items.length + store.data.collections.length, sub: store.data.collections.length + ' 项收藏' },
-  { icon: 'image', label: '照片', value: store.data.photos.length, sub: '张回忆' },
-  { icon: 'map-pin', label: '足迹', value: store.data.locations.length, sub: '个地点' },
+  { icon: 'tasks', label: '任务', value: store.live.tasks.length, sub: store.live.tasks.filter((t) => t.status === 'done').length + ' 已完成' },
+  { icon: 'note', label: '笔记', value: store.live.memos.length, sub: '条记录' },
+  { icon: 'backpack', label: '物品/收藏', value: store.live.items.length + store.live.collections.length, sub: store.live.collections.length + ' 项收藏' },
+  { icon: 'image', label: '照片', value: store.live.photos.length, sub: '张回忆' },
+  { icon: 'map-pin', label: '足迹', value: store.live.locations.length, sub: '个地点' },
   { icon: 'trophy', label: '成就', value: store.data.achievements.length, sub: store.xp + ' XP' }
 ]))
 
@@ -44,10 +44,10 @@ function aggregate(from, to) {
     tasksDone: 0, memos: 0, photos: 0, locations: 0, ledRecords: 0,
     income: 0, expense: 0, xp: 0
   }
-  store.data.tasks.forEach((t) => { if (t.status === 'done' && inRange((t.doneAt || '').slice(0, 10), from, to)) { a.tasksDone++; a.xp += 10 } })
-  store.data.memos.forEach((m) => { if (inRange(m.createdAt, from, to)) { a.memos++; a.xp += 5 } })
-  store.data.photos.forEach((p) => { if (inRange(p.createdAt, from, to)) { a.photos++; a.xp += 8 } })
-  store.data.locations.forEach((l) => { if (inRange(l.date, from, to)) { a.locations++; a.xp += 8 } })
+  store.live.tasks.forEach((t) => { if (t.status === 'done' && inRange((t.doneAt || '').slice(0, 10), from, to)) { a.tasksDone++; a.xp += 10 } })
+  store.live.memos.forEach((m) => { if (inRange(m.createdAt, from, to)) { a.memos++; a.xp += 5 } })
+  store.live.photos.forEach((p) => { if (inRange(p.createdAt, from, to)) { a.photos++; a.xp += 8 } })
+  store.live.locations.forEach((l) => { if (inRange(l.date, from, to)) { a.locations++; a.xp += 8 } })
   store.data.ledger.records.forEach((r) => {
     if (!inRange(r.date, from, to)) return
     a.ledRecords++
@@ -75,10 +75,10 @@ const report = computed(() => {
       // 无时间戳：按「有记录」计在当前小时
       const h = new Date().getHours(); if (bars[h]) bars[h].v++
     }
-    store.data.tasks.forEach((t) => { if (t.status === 'done' && (t.doneAt || '').slice(0, 10) === today) bump(t.doneAt) })
-    store.data.memos.forEach((m) => { if (m.createdAt === today) bump(m.createdAt + 'T' + new Date().getHours() + ':00') })
-    store.data.photos.forEach((p) => { if (p.createdAt === today) bump(p.createdAt + 'T' + new Date().getHours() + ':00') })
-    store.data.locations.forEach((l) => { if (l.date === today) bump(l.date + 'T' + new Date().getHours() + ':00') })
+    store.live.tasks.forEach((t) => { if (t.status === 'done' && (t.doneAt || '').slice(0, 10) === today) bump(t.doneAt) })
+    store.live.memos.forEach((m) => { if (m.createdAt === today) bump(m.createdAt + 'T' + new Date().getHours() + ':00') })
+    store.live.photos.forEach((p) => { if (p.createdAt === today) bump(p.createdAt + 'T' + new Date().getHours() + ':00') })
+    store.live.locations.forEach((l) => { if (l.date === today) bump(l.date + 'T' + new Date().getHours() + ':00') })
     store.data.ledger.records.forEach((r) => { if (r.date === today) bump(r.createdAt || r.date) })
   } else if (key === 'weekly') {
     title = '近 7 天活跃分布'

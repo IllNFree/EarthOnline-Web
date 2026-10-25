@@ -56,5 +56,17 @@ export default defineConfig({
     emptyOutDir: true,
     target: 'es2018',
     chunkSizeWarningLimit: 1200
+  },
+  // v2.0.0 P1：内置 Steam Web API 代理（Steam 官方不返回 CORS 头，浏览器直连必被拦截）
+  // dev / preview 走这里，线上同语义代理由零依赖生产服务 server.js 提供。
+  server: {
+    host: '0.0.0.0',
+    allowedHosts: true,
+    proxy: { '/steam-api': { target: 'https://api.steampowered.com', changeOrigin: true, secure: true, rewrite: (p) => p.replace(/^\/steam-api/, '') } }
+  },
+  preview: {
+    host: '0.0.0.0',
+    allowedHosts: true,
+    proxy: { '/steam-api': { target: 'https://api.steampowered.com', changeOrigin: true, secure: true, rewrite: (p) => p.replace(/^\/steam-api/, '') } }
   }
 })

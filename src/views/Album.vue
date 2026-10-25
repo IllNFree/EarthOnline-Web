@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAppStore } from '../stores/app.js'
 import { useDialogStore } from '../stores/dialog.js'
@@ -20,12 +20,17 @@ const showEditPhoto = ref(false)
 const showAdd = ref(false)
 const form = ref({ name: '', tags: '', dataUrl: '' })
 // 主页速览「传照片」直达：自动弹开上传窗口
-onMounted(() => { if (route.query.add) showAdd.value = true })
+onMounted(() => {
+  if (route.query.add) showAdd.value = true
+  // 右下角全局 FAB：在本页注册「添加照片」
+  store.setQuickAdd(() => { showAdd.value = true })
+})
+onUnmounted(() => store.setQuickAdd(null))
 
 // 「分类」已废弃，统一走标签过滤（数据层 category 保留兼容旧数据）
-const tags = computed(() => Array.from(new Set(store.data.photos.flatMap((p) => p.tags || []))))
+const tags = computed(() => Array.from(new Set(store.live.photos.flatMap((p) => p.tags || []))))
 const photos = computed(() => {
-  let list = store.data.photos
+  let list = store.live.photos
   const q = kw.value.trim().toLowerCase()
   if (q) list = list.filter((p) => (p.name || '').toLowerCase().includes(q) || (p.tags || []).join(' ').toLowerCase().includes(q))
   if (tagFilter.value) list = list.filter((p) => (p.tags || []).includes(tagFilter.value))

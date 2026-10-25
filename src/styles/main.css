@@ -128,6 +128,23 @@ input, textarea, select { font-family: inherit; color: inherit; }
       0 14px 34px -14px rgba(176, 133, 83, 0.38);
   }
 }
+/* v2.0.0 P2：卡片 / 列表项弹簧按压（对齐 Android bouncyClickable 低阻尼回弹 ~0.98f） */
+.glass.card:active, .glass.list-item:active, .eo-card.glass:active {
+  transform: scale(.978);
+  transition: transform .14s cubic-bezier(.34, 1.56, .64, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .glass.card:active, .glass.list-item:active, .eo-card.glass:active { transform: none; }
+}
+/* v2.0.0 P2：路由转场（入场淡入上浮 + 离场淡出下沉，mode=out-in 保证不叠帧） */
+.page-enter-active { transition: opacity .26s cubic-bezier(.22, 1, .36, 1), transform .26s cubic-bezier(.22, 1, .36, 1); }
+.page-leave-active { transition: opacity .16s ease, transform .16s ease; }
+.page-enter-from { opacity: 0; transform: translateY(8px); }
+.page-leave-to { opacity: 0; transform: translateY(-4px) scale(.995); }
+@media (prefers-reduced-motion: reduce) {
+  .page-enter-active, .page-leave-active { transition: none; }
+  .page-enter-from, .page-leave-to { opacity: 1; transform: none; }
+}
 /* 内发光描边：微弱高光环，代替生硬黑阴影 */
 .glass::after {
   content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;

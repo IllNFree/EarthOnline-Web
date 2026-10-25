@@ -5,7 +5,7 @@ import { useAppStore } from '../stores/app.js'
 import { APP_INFO, CHANGELOG, getLifeStats, growthStageOf, todayStr, sanitizeState } from '../lib/model.js'
 import { ACHIEVEMENTS } from '../lib/achievements.js'
 import { downloadBackup, parseBackup } from '../lib/backup.js'
-import { testConnection, pushBackup, pullBackup } from '../lib/webdav.js'
+import { testConnection, pushBackup, pullBackup, mergeBackup, remoteIsNewer, DEFAULT_REMOTE_PATH } from '../lib/webdav.js'
 import Icon from '../components/Icon.vue'
 import GlassUploader from '../components/GlassUploader.vue'
 import AvatarCropper from '../components/AvatarCropper.vue'
@@ -16,9 +16,17 @@ const store = useAppStore()
 const dialog = useDialogStore()
 const $routerPush = useRouter().push
 const theme = ref(store.theme)
-const dav = ref({ url: '', user: '', pass: '' })
+// v2.0.0 P0：补齐 path / autoSync 配置项（对齐 Android WebDavConfig 四字段 + AUTO_SYNC）
+// 凭据只落 localStorage，不进存档，避免被打包进备份文件外泄
+const DAV_KEY = 'eo_webdav_cfg_v2'
+function loadDav() {
+  try { return Object.assign({ url: '', user: '', pass: '', path: DEFAULT_REMOTE_PATH, autoSync: true }, JSON.parse(localStorage.getItem(DAV_KEY) || '{}')) } catch (e) { return { url: '', user: '', pass: '', path: DEFAULT_REMOTE_PATH, autoSync: true } }
+}
+const dav = ref(loadDav())
 const davMsg = ref('')
 const davBusy = ref(false)
+function saveDav() { try { localStorage.setItem(DAV_KEY, JSON.stringify(dav.value)) } catch (e) {} }
+const lastSyncText = computed(() => String(store.data.lastSyncAt || '').replace('T', ' ').slice(0, 19) || '从未同步')
 
 // ---------- 个人资料（原「我的」页并入） ----------
 const life = computed(() => getLifeStats(store.data.birthDate))
@@ -84,7 +92,7 @@ const fromAlpha = (alpha, defAlpha = 1) => {
 }
 const wallPct = ref(fromAlpha(store.data.wallAlpha, 1))
 const wallBlur = ref(Number(store.data.wallBlur) || 0)
-const cardPct = ref(fromAlpha(store.data.cardAlpha, 0.5))
+const cardPct = ref(fromAlpha(store.data.cardAlpha, 0.8))
 function pushAppearance() {
   store.setAppearance({
     wallAlpha: toAlpha(wallPct.value),
@@ -101,7 +109,7 @@ const today = todayStr()
 // 待关注提醒：今日截止 / 已逾期（派生自真实数据）
 const dueItems = computed(() => {
   const out = []
-  store.data.tasks.forEach((t) => {
+  store.live.tasks.forEach((t) => {
     if (t.status === 'done' || !t.dueDate) return
     if (t.dueDate < today) out.push({ id: 'over-' + t.id, icon: 'bolt', tone: 'bad', title: '已逾期：' + t.title, sub: '截止 ' + t.dueDate + (t.dueTime ? ' ' + t.dueTime : ''), to: '/tasks' })
     else if (t.dueDate === today) out.push({ id: 'due-' + t.id, icon: 'clock', tone: 'warn', title: '今日截止：' + t.title, sub: t.dueTime ? '今天 ' + t.dueTime : '今天', to: '/tasks' })
@@ -137,24 +145,74 @@ const SPONSORS = ['海神唐三', 'Seastar', '清浅', '𝓛𝓾𝓬𝓲𝓯𝓮
 
 // ---------- 数据 · 备份与同步 ----------
 function exportData() { downloadBackup(store.data); store.showToast('备份已下载') }
+// 本地 JSON 导入：与 Android @Insert(REPLACE) 同语义 —— 按主键 upsert，不整包覆盖
+function applyMerge(patch, tip) {
+  Object.keys(patch).forEach((k) => { store.data[k] = patch[k] })
+  store.persist(); store.recomputeXp()
+  store.showToast(tip)
+}
 function onImport(e) {
   const f = e.target.files[0]
   if (!f) return
   const r = new FileReader()
   r.onload = () => {
-    try { const st = sanitizeState(parseBackup(r.result)); Object.assign(store.data, st); store.persist(); store.recomputeXp(); store.showToast('导入成功') }
-    catch (err) { store.showToast('导入失败：' + err.message) }
+    try {
+      const st = sanitizeState(parseBackup(r.result))
+      const { patch } = mergeBackup(store.data, st)
+      applyMerge(patch, '已按主键合并导入')
+    } catch (err) { store.showToast('导入失败：' + err.message) }
   }
   r.readAsText(f)
 }
-async function davTest() { davBusy.value = true; const r = await testConnection(dav.value); davMsg.value = r.ok ? '连接成功' : '连接失败：' + r.error; davBusy.value = false }
-async function davPush() { davBusy.value = true; const r = await pushBackup(dav.value, store.data); davMsg.value = r.ok ? '已上传' : '上传失败：' + r.error; davBusy.value = false }
-async function davPull() {
-  davBusy.value = true; const r = await pullBackup(dav.value)
-  davBusy.value = false
-  if (r.ok && r.state) { Object.assign(store.data, r.state); store.persist(); store.recomputeXp(); davMsg.value = '已拉取'; store.showToast('已从 WebDAV 还原') }
-  else davMsg.value = '拉取失败：' + r.error
+async function davTest() {
+  if (!store.requireOnline('测试连接')) return
+  saveDav()
+  davBusy.value = true; const r = await testConnection(dav.value)
+  davMsg.value = r.ok ? '连接成功，配置可用' : '连接失败：' + r.error; davBusy.value = false
 }
+async function davPush() {
+  if (!store.requireOnline('上传备份')) return
+  saveDav()
+  davBusy.value = true
+  const r = await pushBackup(dav.value, store.data)
+  davBusy.value = false
+  if (r.ok) {
+    store.data.lastSyncAt = r.syncedAt || new Date().toISOString()
+    store.persist()
+    davMsg.value = '已上传到 ' + (dav.value.path || DEFAULT_REMOTE_PATH)
+  } else davMsg.value = '上传失败：' + r.error
+}
+async function davPull() {
+  if (!store.requireOnline('拉取备份')) return
+  saveDav()
+  davBusy.value = true
+  const r = await pullBackup(dav.value)
+  davBusy.value = false
+  if (!r.ok) { davMsg.value = '拉取失败：' + r.error; return }
+  const remote = r.payload
+  if (!remoteIsNewer(remote.exportedAt, store.data.lastSyncAt)) {
+    davMsg.value = '云端不比本地新，未改动任何数据'
+    store.showToast('云端无更新数据')
+    return
+  }
+  const { patch, added } = mergeBackup(store.data, remote.state)
+  applyMerge(patch, '已按主键合并，新增 ' + added + ' 条')
+  store.data.lastSyncAt = remote.exportedAt || new Date().toISOString()
+  store.persist()
+  davMsg.value = '已拉取并按主键合并（新增 ' + added + ' 条）'
+}
+
+// ---------- 自动同步（对齐 Android AUTO_SYNC 默认开启） ----------
+let autoTimer = null
+store.onDataChanged(() => {
+  if (!dav.value.autoSync || !dav.value.url) return
+  clearTimeout(autoTimer)
+  autoTimer = setTimeout(async () => {
+    if (!store.online) return
+    const r = await pushBackup(dav.value, store.data)
+    if (r.ok) store.data.lastSyncAt = r.syncedAt || new Date().toISOString()
+  }, 2500)
+})
 async function hardReset() {
   const ok = await dialog.confirm({
     title: '清空全部本地数据',
@@ -179,7 +237,7 @@ async function hardReset() {
       <div style="font-size:20px;font-weight:800;margin-top:10px">{{ store.data.profile.name || '旅行者' }}<span v-if="store.data.profile.customTitle" class="muted" style="font-size:14px"> · {{ store.data.profile.customTitle }}</span></div>
       <div class="muted" style="font-size:13px">{{ store.data.profile.signature || '这个人很神秘' }}</div>
       <div class="row" style="justify-content:center;gap:8px;margin-top:10px">
-        <span class="chip">{{ stage.icon }} {{ stage.label }}</span>
+        <span class="chip"><Icon name="layers" :size="14" /> {{ stage.label }}</span>
         <span class="chip">{{ store.xp }} XP</span>
         <span class="chip">已活 {{ life.daysLived }} 天</span>
       </div>
@@ -214,7 +272,7 @@ async function hardReset() {
       <div class="field">
         <label>卡片透明度（{{ cardPct }}%）</label>
         <input type="range" min="0" max="100" step="1" v-model.number="cardPct" @input="pushAppearance" style="width:100%" />
-        <div class="muted" style="font-size:12px;margin-top:4px">默认 50%：越往右越透底；卡片过透明时会自动为文字加浅色描边保证可读。</div>
+        <div class="muted" style="font-size:12px;margin-top:4px">默认 80%（与 Android 一致）：越往右越透底；卡片过透明时会自动为文字加浅色描边保证可读。</div>
       </div>
     </div>
 
@@ -242,16 +300,29 @@ async function hardReset() {
         <button class="btn" @click="exportData"><Icon name="download" :size="16" /> 导出备份</button>
         <label class="btn ghost"><Icon name="upload" :size="16" /> 导入备份<input type="file" accept="application/json" style="display:none" @change="onImport" /></label>
       </div>
-      <div class="field"><label>WebDAV 地址</label><input v-model="dav.url" placeholder="https://dav.example.com/" /></div>
+      <div class="field"><label>WebDAV 地址</label><input v-model="dav.url" placeholder="https://dav.example.com/" @change="saveDav" /></div>
       <div class="row" style="gap:8px">
-        <div class="field" style="flex:1"><label>账号</label><input v-model="dav.user" /></div>
-        <div class="field" style="flex:1"><label>密码</label><input v-model="dav.pass" type="password" /></div>
+        <div class="field" style="flex:1"><label>账号</label><input v-model="dav.user" @change="saveDav" /></div>
+        <div class="field" style="flex:1"><label>密码</label><input v-model="dav.pass" type="password" @change="saveDav" /></div>
+      </div>
+      <div class="field">
+        <label>远端文件路径</label>
+        <input v-model="dav.path" :placeholder="DEFAULT_REMOTE_PATH" @change="saveDav" />
+        <div class="muted" style="font-size:12px;margin-top:4px">三端统一为 <b>/earth_online_backup.json</b>，改动仅在自建多端分流时需要。</div>
+      </div>
+      <div class="glass card row between" style="margin-bottom:10px">
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600">自动同步</div>
+          <div class="muted" style="font-size:12px">本页任意数据变更后自动推送云端（对齐 Android AUTO_SYNC）</div>
+        </div>
+        <button class="btn ghost" @click="dav.autoSync = !dav.autoSync; saveDav()">{{ dav.autoSync ? '已开启' : '已关闭' }}</button>
       </div>
       <div class="row" style="gap:8px">
         <button class="btn ghost" :disabled="davBusy" @click="davTest"><Icon name="bolt" :size="16" /> 测试</button>
         <button class="btn ghost" :disabled="davBusy" @click="davPush"><Icon name="upload" :size="16" /> 上传</button>
         <button class="btn ghost" :disabled="davBusy" @click="davPull"><Icon name="download" :size="16" /> 拉取</button>
       </div>
+      <div class="muted" style="font-size:12px;margin-top:8px">上次同步：{{ lastSyncText }} · 远端文件 {{ dav.path || DEFAULT_REMOTE_PATH }}</div>
       <div v-if="davMsg" class="muted" style="margin-top:8px">{{ davMsg }}</div>
     </div>
 

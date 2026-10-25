@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, provide, watch, onMounted } from 'vue'
+import { ref, computed, provide, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAppStore } from '../stores/app.js'
 import { useDialogStore } from '../stores/dialog.js'
@@ -14,7 +14,12 @@ const route = useRoute()
 const tab = ref(route.query.tab === 'todo' ? 'todo' : 'daily')
 watch(() => route.query.tab, (v) => { if (v) tab.value = v === 'todo' ? 'todo' : 'daily' })
 // 主页速览「新任务」直达：自动弹开新建任务框
-onMounted(() => { if (route.query.add) openEditor(null, null) })
+onMounted(() => {
+  if (route.query.add) openEditor(null, null)
+  // 右下角全局 FAB：在本页注册「新建任务」
+  store.setQuickAdd(() => openEditor(null, null))
+})
+onUnmounted(() => store.setQuickAdd(null))
 const hideDone = ref(false)
 const showAdd = ref(false)
 const batchMode = ref(false)
@@ -39,12 +44,12 @@ function openEditor(task, parentId) {
   showAdd.value = true
 }
 
-const dailyTasks = computed(() => store.data.tasks.filter((t) => t.category !== 'todo' && !t.parentId))
-const todoTasks = computed(() => store.data.tasks.filter((t) => t.category === 'todo'))
+const dailyTasks = computed(() => store.live.tasks.filter((t) => t.category !== 'todo' && !t.parentId))
+const todoTasks = computed(() => store.live.tasks.filter((t) => t.category === 'todo'))
 // 孤儿任务（父已删但自身在）：当根渲染，避免消失
 const orphans = computed(() => {
-  const ids = new Set(store.data.tasks.map((t) => t.id))
-  return store.data.tasks.filter((t) => t.parentId && !ids.has(t.parentId) && t.category !== 'todo')
+  const ids = new Set(store.live.tasks.map((t) => t.id))
+  return store.live.tasks.filter((t) => t.parentId && !ids.has(t.parentId) && t.category !== 'todo')
 })
 const roots = computed(() => dailyTasks.value.concat(orphans.value))
 function visibleRoots() { return (hideDone.value ? roots.value.filter((t) => t.status !== 'done') : roots.value).filter(taskMatch) }
@@ -53,7 +58,7 @@ function catLabel(c) { return (TASK_CATEGORY[c] || {}).label || c }
 function statusLabel(s) { return (TASK_STATUS[s] || {}).label || s }
 
 // 可选父任务：排除自身（防环）
-const parentOptions = computed(() => store.data.tasks.filter((t) => t.id !== editor.value.id && t.category !== 'todo'))
+const parentOptions = computed(() => store.live.tasks.filter((t) => t.id !== editor.value.id && t.category !== 'todo'))
 
 // 截止日期时间：原生 datetime-local（鼠标友好），底层仍拆存 dueDate + dueTime
 const dueLocal = computed({
@@ -102,7 +107,7 @@ function batchDelete() {
 }
 function batchExport() {
   const ids = selected.value
-  const items = store.data.tasks.filter((t) => ids.has(t.id))
+  const items = store.live.tasks.filter((t) => ids.has(t.id))
   const blob = new Blob([JSON.stringify(items, null, 2)], { type: 'application/json' })
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'tasks-export.json'; a.click()
   store.showToast('已导出')
@@ -135,7 +140,7 @@ function batchExport() {
         <TaskNode v-for="t in visibleRoots()" :key="t.id" :task="t" :depth="0" />
       </template>
       <template v-else>
-        <div v-for="t in store.data.tasks.filter((x) => x.category !== 'todo' && taskMatch(x))" :key="t.id" class="glass list-item" @click="toggleSelect(t.id)">
+        <div v-for="t in store.live.tasks.filter((x) => x.category !== 'todo' && taskMatch(x))" :key="t.id" class="glass list-item" @click="toggleSelect(t.id)">
           <input type="checkbox" :checked="selected.has(t.id)" @click.stop="toggleSelect(t.id)" />
           <div style="flex:1;min-width:0">
             <div style="font-weight:600">{{ t.title }}</div>
@@ -146,7 +151,7 @@ function batchExport() {
           </div>
         </div>
       </template>
-      <div v-if="!store.data.tasks.some((t) => t.category !== 'todo')" class="glass card empty-state">
+      <div v-if="!store.live.tasks.some((t) => t.category !== 'todo')" class="glass card empty-state">
         <span class="empty-illu"><Icon name="sprout" :size="32" /></span>
         <div class="es-title">还没有日常任务</div>
         <div class="es-sub">从一个目标开始，人生游戏正式开局。</div>
@@ -195,7 +200,7 @@ function batchExport() {
     </div>
 
     <Modal :title="editor.id ? '编辑任务' : (editor.parentId ? '添加子任务' : '新建任务')" :show="showAdd" @close="showAdd = false">
-      <div v-if="editor.parentId" class="muted" style="font-size:12px;margin-bottom:8px">将添加为「{{ (store.data.tasks.find((t) => t.id === editor.parentId) || {}).title }}」的子任务</div>
+      <div v-if="editor.parentId" class="muted" style="font-size:12px;margin-bottom:8px">将添加为「{{ (store.live.tasks.find((t) => t.id === editor.parentId) || {}).title }}」的子任务</div>
       <div class="field"><label>标题</label><input v-model="editor.title" placeholder="要做点什么？" /></div>
       <div class="field" v-if="editor.id"><label>状态</label>
         <select v-model="editor.status">

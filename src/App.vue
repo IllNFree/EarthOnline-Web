@@ -1,11 +1,11 @@
 <script setup>
-import { computed, onMounted, onUnmounted } from 'vue'
+import { computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { motion } from 'motion-v'
 import { useMediaQuery } from '@vueuse/core'
 import { useAppStore } from './stores/app.js'
 import { useDialogStore } from './stores/dialog.js'
-import { xpLevelInfo } from './lib/model.js'
+import { xpLevelInfo, APP_INFO } from './lib/model.js'
 import Icon from './components/Icon.vue'
 import GlassDialog from './components/GlassDialog.vue'
 
@@ -78,6 +78,21 @@ function installNow() {
 }
 function dismissInstall() { store.installPrompt = null }
 
+// ---------- 全局搜索（Esc 关闭 / 结果直达路由） ----------
+let searchInputEl = null
+async function openSearch() {
+  store.toggleSearch(true)
+  await nextTick()
+  searchInputEl = document.getElementById('eo-global-search')
+  if (searchInputEl) searchInputEl.focus()
+}
+function closeSearch() { store.toggleSearch(false) }
+function goResult(route) {
+  routerPush(route)
+  closeSearch()
+}
+const resultCount = computed(() => store.searchResults.reduce((n, g) => n + g.items.length, 0))
+
 let mq
 let spotlightHandler = null
 // 主 Tab 路由（Esc 返回逻辑中的「非二级页」）
@@ -104,6 +119,7 @@ onMounted(() => {
   escHandler = (e) => {
     if (e.key !== 'Escape') return
     if (dialog.open) { dialog.close(false); return }
+    if (store.searchOpen) { store.toggleSearch(false); return }
     const ev = new CustomEvent('eo-esc')
     document.dispatchEvent(ev)
     if (ev.defaultPrevented) return // 有组件消费（如关闭弹窗/搜索）
@@ -160,7 +176,7 @@ onUnmounted(() => {
       </template>
     </nav>
     <div class="side-foot">
-      <span class="muted">v1.0.6 · 双端自适应</span>
+      <span class="muted">v{{ APP_INFO.version }} · 双端自适应</span>
     </div>
   </aside>
 
@@ -168,6 +184,7 @@ onUnmounted(() => {
     <div class="statusbar__top">
       <span class="title">{{ title }}</span>
       <span class="spacer"></span>
+      <button class="ghost-btn" @click="openSearch" aria-label="全局搜索"><Icon name="search" :size="20" /></button>
       <button class="ghost-btn" @click="$router.push('/settings')" aria-label="设置">
         <Icon name="settings" :size="20" />
       </button>
@@ -180,17 +197,58 @@ onUnmounted(() => {
     </div>
   </div>
 
-  <!-- 页面切换：纯 CSS 淡入（不依赖 motion-v，避免动画未启动时页面停在透明态导致「空白页」） -->
-  <div :key="route.path" class="route-wrap page-enter">
+  <!-- 页面切换：CSS 过渡（入场 + 离场），不依赖 JS 动画库，永不出现「停在透明态」的空白页 -->
+  <div class="route-wrap">
     <router-view v-slot="{ Component }">
-      <component :is="Component" />
+      <transition name="page" mode="out-in">
+        <component :is="Component" />
+      </transition>
     </router-view>
   </div>
+
+  <!-- 全局新增 FAB（列表页自行注册自己的「新增」动作，右下角悬浮，对齐 Android 列表页 FAB） -->
+  <motion.button v-if="store.quickAdd" class="quick-fab" :while-hover="{ y: -1, scale: 1.02 }" :while-press="{ scale: 0.94 }" :transition="{ type: 'spring', stiffness: 420, damping: 24 }" @click="store.runQuickAdd()" aria-label="新增">
+    <Icon name="plus" :size="26" />
+  </motion.button>
 
   <!-- AI 快捷中枢悬浮入口（手机 PWA 模式专属） -->
   <motion.button v-if="!isDesktop" class="ai-fab" :while-hover="{ y: -1, scale: 1.02 }" :while-press="{ scale: 0.94 }" :transition="{ type: 'spring', stiffness: 420, damping: 24 }" @click="$router.push('/ai')" aria-label="AI 中枢">
     <Icon name="sparkles" :size="26" />
   </motion.button>
+
+  <!-- 断网全局提示横幅（对齐 Android NetworkMonitor 离线横幅） -->
+  <transition name="netbar">
+    <div v-if="!store.online" class="offline-bar glass">
+      <Icon name="cloud" :size="18" />
+      <span>当前处于离线状态，云端同步与 AI 对话暂不可用</span>
+    </div>
+  </transition>
+
+  <!-- 全局搜索面板：6 类聚合 + 直达路由 -->
+  <transition name="fade">
+    <div v-if="store.searchOpen" class="search-mask" @click.self="closeSearch">
+      <div class="search-panel glass glass-strong">
+        <div class="search-field">
+          <Icon name="search" :size="18" />
+          <input id="eo-global-search" v-model="store.searchQuery" placeholder="搜索任务 / 物品 / 收藏 / 笔记 / 足迹 / 成就" />
+          <button class="ghost-btn" @click="closeSearch"><Icon name="x" :size="16" /></button>
+        </div>
+        <div class="search-body">
+          <div v-if="!store.searchQuery.trim()" class="muted" style="text-align:center;padding:30px">输入关键词开始检索全站数据</div>
+          <template v-else>
+            <div v-for="g in store.searchResults" :key="g.type" class="search-group">
+              <div class="search-group__title"><Icon :name="g.icon" :size="14" /> {{ g.label }} · {{ g.items.length }}</div>
+              <button v-for="it in g.items" :key="it.id" class="search-item" @click="goResult(g.route)">
+                <span style="font-weight:600">{{ it.title }}</span>
+                <span class="muted" style="font-size:12px">{{ it.sub }}</span>
+              </button>
+            </div>
+            <div v-if="!resultCount" class="muted" style="text-align:center;padding:30px">没有匹配的内容</div>
+          </template>
+        </div>
+      </div>
+    </div>
+  </transition>
 
   <!-- 手机 PWA 模式：底部悬浮胶囊导航（<900px） -->
   <nav v-if="!isDesktop" class="bottomnav">
@@ -224,10 +282,65 @@ onUnmounted(() => {
 .ghost-btn:active { opacity: .6; }
 
 .route-wrap { position: absolute; inset: 0; z-index: 1; }
-/* 页面进入动画：纯 CSS， guaranteed 可见（从轻微下移+透明淡入） */
-.page-enter { animation: pageIn .3s cubic-bezier(.22, 1, .36, 1) both; }
-@keyframes pageIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-@media (prefers-reduced-motion: reduce) { .page-enter { animation: none; } }
+
+/* ---- 全局新增 FAB（右下角，压在 AI 悬浮球之上） ---- */
+.quick-fab {
+  position: fixed; right: 18px; z-index: 60;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 158px);
+  width: 56px; height: 56px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, var(--eo-primary-soft), var(--eo-primary-deep));
+  color: #fff; overflow: hidden;
+  box-shadow: 0 0 0 1px rgba(255,255,255,.18) inset, 0 14px 30px -10px rgba(176, 133, 83, 0.62);
+  transition: transform .2s cubic-bezier(.22, 1, .36, 1), box-shadow .2s ease;
+}
+.quick-fab::before {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: linear-gradient(125deg, rgba(255,255,255,0.30) 0%, transparent 45%);
+  opacity: .7; mix-blend-mode: screen;
+}
+.quick-fab:active { transform: scale(.94); }
+.quick-fab svg { position: relative; z-index: 1; }
+
+/* ---- 断网全局横幅 ---- */
+.offline-bar {
+  position: fixed; z-index: 62; left: 12px; right: 12px; top: 8px;
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px; border-radius: 16px;
+  font-size: 13px; font-weight: 600; color: var(--eo-ink);
+  background: rgba(255, 244, 229, .92);
+  border: 1px solid rgba(214, 152, 90, .5);
+  box-shadow: var(--eo-shadow-soft);
+}
+.netbar-enter-active, .netbar-leave-active { transition: opacity .22s ease, transform .22s ease; }
+.netbar-enter-from, .netbar-leave-to { opacity: 0; transform: translateY(-8px); }
+
+/* ---- 全局搜索面板 ---- */
+.search-mask {
+  position: fixed; inset: 0; z-index: 70;
+  background: rgba(28, 22, 16, .34); backdrop-filter: blur(6px);
+  display: flex; justify-content: center; padding: 10vh 14px 24px;
+}
+.search-panel {
+  width: 100%; max-width: 560px; max-height: 74vh;
+  display: flex; flex-direction: column; overflow: hidden;
+  border-radius: var(--eo-radius);
+}
+.search-field { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--eo-glass-border); }
+.search-field input { flex: 1; min-width: 0; border: none; background: transparent; font-size: 15px; outline: none; }
+.search-body { overflow-y: auto; padding: 8px 10px 14px; }
+.search-group { margin-bottom: 10px; }
+.search-group__title {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 8px; font-size: 11px; font-weight: 700; letter-spacing: .08em;
+  color: var(--eo-primary-deep);
+}
+.search-item {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  width: 100%; padding: 9px 12px; border-radius: 12px; text-align: left;
+  transition: background .16s ease, transform .16s ease;
+}
+.search-item:hover { background: var(--eo-chip); transform: translateX(2px); }
 
 .side-user {
   display: flex; align-items: center; gap: 11px; width: 100%;

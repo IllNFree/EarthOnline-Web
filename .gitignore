@@ -11,3 +11,6 @@ node_modules/
 
 # 构建产物（构建时自动生成，不入库）
 dist/
+
+# 部署用的已构建副本（server.cjs 优先读取，由 npm run predeploy 生成）
+webroot/
