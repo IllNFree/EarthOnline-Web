@@ -48,4 +48,8 @@ npm run dev
 
 - 活跃构建：`npm ci && npm run build` → `dist/`（Vite + Vue 3 + Pinia + PWA）
 - 生产服务：`npm start`（= `node server.cjs`）静态托管 `dist/` 并内置 Steam 反向代理；`index.html` 输出 `no-cache`，避免版本更新后仍命中旧缓存
-- `.nojekyll` 已保留，确保 GitHub Pages 不忽略下划线路径
+
+## 在线访问
+
+- 生产地址（唯一）：**https://earth-online-life-95391.app.workbuddy.host/**
+- 部署通道：WorkBuddy sites（非 GitHub Pages）。GitHub 仓库的 Homepage 字段已指向上述地址；任何 `*.github.io` 链接均为历史残留，已废弃，请勿使用。
