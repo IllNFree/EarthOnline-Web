@@ -354,3 +354,103 @@ export function ensureLedgerCategories(state) {
   if (!state.ledger.expenseCategories.length) state.ledger.expenseCategories = LEDGER_EXPENSE_PRESET.slice()
   if (!state.ledger.incomeCategories.length) state.ledger.incomeCategories = LEDGER_INCOME_PRESET.slice()
 }
+
+// ---------- v2.1.0：白板（无限画布便利贴 + 连线） ----------
+export function addWhiteboardNode(state, data) {
+  const node = sanitizeWhiteboardNodeLocal(data)
+  state.whiteboardNodes.push(node)
+  return { ok: true, node }
+}
+export function updateWhiteboardNode(state, id, patch) {
+  const n = state.whiteboardNodes.find((x) => x.id === id)
+  if (!n) return null
+  if (patch.x !== undefined) n.x = Number(patch.x) || 0
+  if (patch.y !== undefined) n.y = Number(patch.y) || 0
+  if (patch.w !== undefined) n.w = Math.min(1200, Math.max(120, Number(patch.w) || 200))
+  if (patch.h !== undefined) n.h = Math.min(1200, Math.max(80, Number(patch.h) || 140))
+  if (patch.text !== undefined) n.text = String(patch.text).slice(0, 2000)
+  if (patch.color !== undefined) n.color = String(patch.color || 'amber')
+  if (patch.refId !== undefined) n.refId = patch.refId || null
+  n.updatedAt = todayStr()
+  return n
+}
+export function deleteWhiteboardNode(state, id) {
+  const n = state.whiteboardNodes.find((x) => x.id === id)
+  if (!n) return false
+  n.deletedAt = nowIso()
+  // 级联软删该节点相关的连线
+  state.whiteboardEdges.forEach((e) => { if (e.from === id || e.to === id) e.deletedAt = nowIso() })
+  return true
+}
+export function addWhiteboardEdge(state, data) {
+  if (!data.from || !data.to || data.from === data.to) return { ok: false, error: '连线两端无效' }
+  const edge = {
+    id: uid('wbe'), from: String(data.from), to: String(data.to),
+    label: String(data.label || ''), createdAt: todayStr(), deletedAt: null
+  }
+  state.whiteboardEdges.push(edge)
+  return { ok: true, edge }
+}
+export function deleteWhiteboardEdge(state, id) {
+  const e = state.whiteboardEdges.find((x) => x.id === id)
+  if (!e) return false
+  e.deletedAt = nowIso()
+  return true
+}
+
+// ---------- v2.1.0：双向链接（系统级实体关联 + 反向索引） ----------
+export function addBiLink(state, data) {
+  const types = ['task', 'memo', 'item', 'photo', 'collection', 'location', 'ledger']
+  const sourceType = types.includes(data.sourceType) ? data.sourceType : 'memo'
+  const targetType = types.includes(data.targetType) ? data.targetType : 'task'
+  if (!data.sourceId || !data.targetId) return { ok: false, error: '关联两端无效' }
+  // 去重：同一对 (source,target) 不重复写入
+  const dup = state.biLinks.find((b) => !b.deletedAt && b.sourceType === sourceType && b.sourceId === data.sourceId && b.targetType === targetType && b.targetId === data.targetId)
+  if (dup) return { ok: true, link: dup, duplicated: true }
+  const link = {
+    id: uid('bil'), sourceType, sourceId: String(data.sourceId),
+    targetType, targetId: String(data.targetId), createdAt: todayStr(), deletedAt: null
+  }
+  state.biLinks.push(link)
+  return { ok: true, link }
+}
+export function deleteBiLink(state, id) {
+  const b = state.biLinks.find((x) => x.id === id)
+  if (!b) return false
+  b.deletedAt = nowIso()
+  return true
+}
+// 反向索引：查询某实体被哪些实体引用（用于「某任务被哪些笔记引用」）
+export function backlinksOf(state, type, id) {
+  return state.biLinks.filter((b) => !b.deletedAt && b.targetType === type && b.targetId === id)
+}
+export function forwardLinksOf(state, type, id) {
+  return state.biLinks.filter((b) => !b.deletedAt && b.sourceType === type && b.sourceId === id)
+}
+
+function sanitizeWhiteboardNodeLocal(data) {
+  return {
+    id: uid('wbn'),
+    type: ['task', 'memo', 'item', 'photo', 'note'].includes(data.type) ? data.type : 'note',
+    refId: data.refId || null,
+    x: Number(data.x) || 0, y: Number(data.y) || 0,
+    w: Math.min(1200, Math.max(120, Number(data.w) || 200)),
+    h: Math.min(1200, Math.max(80, Number(data.h) || 140)),
+    color: data.color || 'amber',
+    text: String(data.text || '').slice(0, 2000),
+    createdAt: todayStr(), updatedAt: todayStr(), deletedAt: null
+  }
+}
+
+// ---------- v2.1.0：看板布局（序列化保存） ----------
+export function saveDashboardLayout(state, layout) {
+  if (!Array.isArray(layout)) return false
+  state.dashboardLayout = layout
+    .filter((l) => l && l.i)
+    .map((l) => ({
+      i: String(l.i), x: Number(l.x) || 0, y: Number(l.y) || 0,
+      w: Math.min(12, Math.max(1, Number(l.w) || 4)), h: Math.min(24, Math.max(1, Number(l.h) || 6)),
+      module: ['chart', 'calendar', 'tasks', 'stats', 'recent'].includes(l.module) ? l.module : 'tasks'
+    }))
+  return true
+}

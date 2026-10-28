@@ -6,6 +6,7 @@ import { APP_INFO, CHANGELOG, getLifeStats, growthStageOf, todayStr, sanitizeSta
 import { ACHIEVEMENTS } from '../lib/achievements.js'
 import { downloadBackup, parseBackup } from '../lib/backup.js'
 import { testConnection, pushBackup, pullBackup, mergeBackup, remoteIsNewer, DEFAULT_REMOTE_PATH } from '../lib/webdav.js'
+import { importBillToLedger, importMarkdownToNotes } from '../services/DataImporter.js'
 import Icon from '../components/Icon.vue'
 import GlassUploader from '../components/GlassUploader.vue'
 import AvatarCropper from '../components/AvatarCropper.vue'
@@ -202,6 +203,30 @@ async function davPull() {
   davMsg.value = '已拉取并按主键合并（新增 ' + added + ' 条）'
 }
 
+// ---------- 第三方数据导入（需求 5） ----------
+function onImportBill(e) {
+  const f = e.target.files[0]
+  if (!f) return
+  const r = new FileReader()
+  r.onload = () => {
+    const res = importBillToLedger(r.result)
+    store.showToast(res.ok ? ('已导入记账 ' + res.imported + ' 条') : ('导入失败：' + res.error))
+  }
+  r.readAsText(f)
+  e.target.value = ''
+}
+function onImportMd(e) {
+  const f = e.target.files[0]
+  if (!f) return
+  const r = new FileReader()
+  r.onload = () => {
+    const res = importMarkdownToNotes(r.result)
+    store.showToast(res.ok ? ('已导入笔记 ' + res.imported + ' 篇') : '导入失败')
+  }
+  r.readAsText(f)
+  e.target.value = ''
+}
+
 // ---------- 自动同步（对齐 Android AUTO_SYNC 默认开启） ----------
 let autoTimer = null
 store.onDataChanged(() => {
@@ -293,12 +318,33 @@ async function hardReset() {
       <Icon name="chevron" :size="18" />
     </div>
 
+    <!-- 桌面级交互（需求 8 开关） -->
+    <div class="section-title">桌面级交互</div>
+    <div class="glass card row between" style="margin-bottom:10px">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600">自定义右键菜单</div>
+        <div class="muted" style="font-size:12px">液态玻璃操作面板；关闭后放行浏览器原生右键菜单</div>
+      </div>
+      <button class="btn ghost" @click="store.data.enableCustomContextMenu = !store.data.enableCustomContextMenu; store.persist()">{{ store.data.enableCustomContextMenu ? '已开启' : '已关闭' }}</button>
+    </div>
+    <div class="glass card row between" style="margin-bottom:10px">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600">剪贴板智能监听</div>
+        <div class="muted" style="font-size:12px">切回网页时若剪贴板有新内容，右下角提示「加入笔记」</div>
+      </div>
+      <button class="btn ghost" @click="store.data.enableClipboardWatch = !store.data.enableClipboardWatch; store.persist()">{{ store.data.enableClipboardWatch ? '已开启' : '已关闭' }}</button>
+    </div>
+
     <!-- 数据 · 备份与同步 -->
     <div class="section-title">数据 · 备份与同步</div>
     <div class="glass card">
       <div class="row" style="gap:8px;margin-bottom:12px">
         <button class="btn" @click="exportData"><Icon name="download" :size="16" /> 导出备份</button>
         <label class="btn ghost"><Icon name="upload" :size="16" /> 导入备份<input type="file" accept="application/json" style="display:none" @change="onImport" /></label>
+      </div>
+      <div class="row" style="gap:8px;margin-bottom:12px">
+        <label class="btn ghost"><Icon name="upload" :size="16" /> 导入账单 CSV<input type="file" accept=".csv,text/csv" style="display:none" @change="onImportBill" /></label>
+        <label class="btn ghost"><Icon name="upload" :size="16" /> 导入 Markdown<input type="file" accept=".md,text/markdown" style="display:none" @change="onImportMd" /></label>
       </div>
       <div class="field"><label>WebDAV 地址</label><input v-model="dav.url" placeholder="https://dav.example.com/" @change="saveDav" /></div>
       <div class="row" style="gap:8px">

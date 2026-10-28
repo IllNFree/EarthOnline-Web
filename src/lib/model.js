@@ -177,7 +177,17 @@ export function defaultState() {
     // v2.0.0 P0-1：WebDAV 同步水位线，用于拉云备份前的冲突比对（与 Android lastSyncAt 同语义）
     lastSyncAt: '',
     ledger: { records: [], expenseCategories: [], incomeCategories: [] },
-    eggs: sanitizeEggs(null)
+    eggs: sanitizeEggs(null),
+    // v2.1.0：白板便利贴节点与连线（持久化 + 纳入 WebDAV 同步契约，按主键合并）
+    whiteboardNodes: [],
+    whiteboardEdges: [],
+    // v2.1.0：自定义看板布局序列化（可拖拽模块位置）
+    dashboardLayout: [],
+    // v2.1.0：双向链接反向索引（系统级实体关联，覆盖全实体）
+    biLinks: [],
+    // v2.1.0：桌面级生产力交互开关（落库同步，对齐 Android 偏好）
+    enableCustomContextMenu: true,
+    enableClipboardWatch: true
   }
 }
 
@@ -578,7 +588,13 @@ export function sanitizeState(raw) {
     cardAlphaV2: true,
     lastSyncAt: str(raw.lastSyncAt, 40),
     ledger: sanitizeLedger(raw.ledger),
-    eggs: sanitizeEggs(raw.eggs)
+    eggs: sanitizeEggs(raw.eggs),
+    whiteboardNodes: arrOf(raw.whiteboardNodes).filter((n) => n && typeof n === 'object' && n.id).map(sanitizeWhiteboardNode),
+    whiteboardEdges: arrOf(raw.whiteboardEdges).filter((e) => e && typeof e === 'object' && e.id).map(sanitizeWhiteboardEdge),
+    dashboardLayout: arrOf(raw.dashboardLayout).filter((l) => l && typeof l === 'object' && l.i).map(sanitizeDashboardItem),
+    biLinks: arrOf(raw.biLinks).filter((b) => b && typeof b === 'object' && b.id).map(sanitizeBiLink),
+    enableCustomContextMenu: raw.enableCustomContextMenu === false ? false : true,
+    enableClipboardWatch: raw.enableClipboardWatch === false ? false : true
   }
   // 旧模型 trash[] → 新模型 deletedAt（记录搬回各自集合，回收站内容不丢）
   migrateTrashToDeletedAt(s)
@@ -588,4 +604,56 @@ export function sanitizeState(raw) {
 export function pushActivity(state, icon, text) {
   state.activities.unshift({ id: uid('act'), icon, text, time: todayStr() })
   if (state.activities.length > 60) state.activities.length = 60
+}
+
+// ---------- v2.1.0：白板 / 看板 / 双向链接 容错清洗 ----------
+function sanitizeWhiteboardNode(n) {
+  const id = str(n.id) || uid('wbn')
+  const type = ['task', 'memo', 'item', 'photo', 'note'].includes(n.type) ? n.type : 'note'
+  return {
+    id,
+    type,
+    refId: str(n.refId, 80) || null,
+    x: clampNum(n.x, -100000, 100000, 0),
+    y: clampNum(n.y, -100000, 100000, 0),
+    w: clampNum(n.w, 120, 1200, 200),
+    h: clampNum(n.h, 80, 1200, 140),
+    color: str(n.color, 20) || 'amber',
+    text: str(n.text, 2000),
+    createdAt: str(n.createdAt, 30) || todayStr(),
+    updatedAt: str(n.updatedAt, 30) || todayStr(),
+    deletedAt: n.deletedAt || null
+  }
+}
+function sanitizeWhiteboardEdge(e) {
+  return {
+    id: str(e.id) || uid('wbe'),
+    from: str(e.from, 80),
+    to: str(e.to, 80),
+    label: str(e.label, 60),
+    createdAt: str(e.createdAt, 30) || todayStr(),
+    deletedAt: e.deletedAt || null
+  }
+}
+function sanitizeDashboardItem(l) {
+  return {
+    i: str(l.i, 60) || uid('dash'),
+    x: clampNum(l.x, 0, 100, 0),
+    y: clampNum(l.y, 0, 100, 0),
+    w: clampNum(l.w, 1, 12, 4),
+    h: clampNum(l.h, 1, 24, 6),
+    module: ['chart', 'calendar', 'tasks', 'stats', 'recent'].includes(l.module) ? l.module : 'tasks'
+  }
+}
+function sanitizeBiLink(b) {
+  const types = ['task', 'memo', 'item', 'photo', 'collection', 'location', 'ledger']
+  return {
+    id: str(b.id) || uid('bil'),
+    sourceType: types.includes(b.sourceType) ? b.sourceType : 'memo',
+    sourceId: str(b.sourceId, 80),
+    targetType: types.includes(b.targetType) ? b.targetType : 'task',
+    targetId: str(b.targetId, 80),
+    createdAt: str(b.createdAt, 30) || todayStr(),
+    deletedAt: b.deletedAt || null
+  }
 }

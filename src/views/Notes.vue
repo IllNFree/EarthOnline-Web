@@ -5,6 +5,7 @@ import { useAppStore } from '../stores/app.js'
 import { useDialogStore } from '../stores/dialog.js'
 import Icon from '../components/Icon.vue'
 import MarkdownView from '../components/MarkdownView.vue'
+import EntityPicker from '../components/EntityPicker.vue'
 import Modal from '../components/GlassBottomSheet.vue'
 
 const store = useAppStore()
@@ -61,6 +62,47 @@ function del(id) {
   dialog.confirm({ title: '删除笔记', message: '该笔记将移入回收站（30 天内可恢复）。', danger: true, confirmText: '删除' })
     .then((ok) => { if (ok) { store.deleteMemo(id); store.showToast('已移入回收站') } })
 }
+
+// 需求 4：双向链接编辑层 —— @ 触发全局级联选择器，插入 [@Type:ID] 语法
+const showPicker = ref(false)
+let caretRange = null
+function openPicker() {
+  const el = editorRef.value
+  if (el) {
+    const sel = window.getSelection()
+    if (sel && sel.rangeCount) caretRange = sel.getRangeAt(0).cloneRange()
+  }
+  showPicker.value = true
+}
+function onPick(entity) {
+  const token = '[@' + entity.type + ':' + entity.id + ']'
+  const el = editorRef.value
+  if (el && document.createRange && window.getSelection) {
+    el.focus()
+    const sel = window.getSelection()
+    if (caretRange) { sel.removeAllRanges(); sel.addRange(caretRange) }
+    const r = sel.getRangeAt(0)
+    const before = r.startContainer.textContent ? r.startContainer.textContent.slice(0, r.startOffset) : ''
+    if (before.endsWith('@')) {
+      const tr = document.createRange()
+      tr.setStart(r.startContainer, Math.max(0, r.startOffset - 1))
+      tr.setEnd(r.startContainer, r.startOffset)
+      tr.deleteContents()
+    }
+    document.execCommand('insertText', false, token + ' ')
+  } else if (el) {
+    el.innerHTML += token
+  }
+  caretRange = null
+  showPicker.value = false
+}
+function onEditorInput() {
+  const sel = window.getSelection()
+  if (!sel || !sel.rangeCount) return
+  const r = sel.getRangeAt(0)
+  const before = r.startContainer.textContent ? r.startContainer.textContent.slice(0, r.startOffset) : ''
+  if (before.endsWith('@')) openPicker()
+}
 </script>
 
 <template>
@@ -100,10 +142,17 @@ function del(id) {
         <button class="chip" @click="exec('italic')"><i>I</i></button>
         <button class="chip" @click="exec('insertUnorderedList')"><Icon name="checklist" :size="14" /> 列表</button>
         <button class="chip" @click="toggleTodo"><Icon name="checklist" :size="14" /> 待办</button>
+        <button class="chip" @click="openPicker"><Icon name="link" :size="14" /> 关联</button>
       </div>
-      <div ref="editorRef" class="eo-editor" contenteditable="true"></div>
+      <div ref="editorRef" class="eo-editor" contenteditable="true" @input="onEditorInput"></div>
       <button class="btn" style="width:100%;margin-top:14px" @click="save"><Icon name="edit" :size="16" /> 保存</button>
     </Modal>
+
+    <teleport to="body">
+      <div v-if="showPicker" class="ep-overlay" @click.self="showPicker = false" style="position:fixed;inset:0;z-index:85;display:flex;align-items:center;justify-content:center;background:rgba(28,22,16,.3);backdrop-filter:blur(4px)">
+        <EntityPicker @select="onPick" @close="showPicker = false" />
+      </div>
+    </teleport>
   </div>
 </template>
 

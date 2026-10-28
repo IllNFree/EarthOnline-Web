@@ -16,6 +16,8 @@ const routes = [
   { path: '/ledger', name: 'ledger', component: () => import('../views/Ledger.vue'), meta: { title: '记账' } },
   { path: '/privacy', name: 'privacy', component: () => import('../views/Privacy.vue'), meta: { title: '隐私政策' } },
   { path: '/trash', name: 'trash', component: () => import('../views/Trash.vue'), meta: { title: '回收站' } },
+  { path: '/whiteboard', name: 'whiteboard', component: () => import('../views/WhiteboardView.vue'), meta: { title: '白板' } },
+  { path: '/dashboard', name: 'dashboard', component: () => import('../views/CustomDashboard.vue'), meta: { title: '自定义看板' } },
   { path: '/settings', name: 'settings', component: () => import('../views/Settings.vue'), meta: { title: '设置' } }
 ]
 

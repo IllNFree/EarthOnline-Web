@@ -2,10 +2,13 @@
 import { ref, computed, nextTick, watch } from 'vue'
 import { useAppStore } from '../stores/app.js'
 import { testConnection, chatStream, decodeQuickIntent, applyIntent } from '../lib/ai.js'
+import { useToolExecutor } from '../services/ToolExecutor.js'
 import Icon from '../components/Icon.vue'
 import Modal from '../components/GlassBottomSheet.vue'
+import ReportRenderer from '../components/ReportRenderer.vue'
 
 const store = useAppStore()
+const tool = useToolExecutor()
 // 快捷中枢与对话页合并：单一输入框 + 快捷模式开关，共用一套全局会话历史（需求 #11）
 const quickMode = ref(false)
 const input = ref('')
@@ -66,9 +69,44 @@ async function quick() {
   const r = await decodeQuickIntent(store.data.aiConfig, text)
   typing.value = false
   if (!r.ok) { store.pushAi('assistant', '（识别失败：' + r.error + '）'); return }
-  const res = applyIntent(store.data, r.intent)
+  const intent = r.intent || {}
+  // 需求 3：统一经 ToolExecutor 路由（create_task/create_note/add_item/add_location）
+  const map = { task: 'create_task', memo: 'create_note', item: 'add_item', location: 'add_location' }
+  let res
+  if (intent.action === 'none' || !map[intent.action]) {
+    res = applyIntent(store.data, intent)
+  } else {
+    const p = intent.payload || {}
+    const tr = tool.execute({ tool_name: map[intent.action], parameters: p })
+    res = tr.ok ? { ok: true, label: tr.message } : { ok: false, error: tr.error }
+  }
   store.pushAi('assistant', res.ok ? res.label : ('未能执行：' + (res.error || '请稍后再试')))
   if (res.ok) store.showToast(res.label)
+}
+
+// 需求 2：AI 主动服务与报告（Web 端展示）—— 从真实数据派生「年度人生报告」
+const report = ref(null)
+function buildReport() {
+  const now = new Date()
+  const months = []
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    const ym = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')
+    const tasks = store.live.tasks.filter((t) => (t.createdAt || '').slice(0, 7) === ym).length
+    const expense = store.data.ledger.records
+      .filter((r) => (r.date || '').slice(0, 7) === ym && r.type === 'expense')
+      .reduce((s, r) => s + (Number(r.amount) || 0), 0)
+    months.push({ ym, tasks, expense })
+  }
+  report.value = {
+    title: now.getFullYear() + ' 年度人生报告',
+    summary: '今年你共创建 ' + store.live.tasks.length + ' 个任务，记账 ' + store.data.ledger.records.length + ' 笔。人生这场开放世界游戏，你一直在前进。',
+    trends: [
+      { label: '每月新增任务', unit: '个', points: months.map((m) => ({ date: m.ym, value: m.tasks })) },
+      { label: '每月支出', unit: '元', points: months.map((m) => ({ date: m.ym, value: Math.round(m.expense) })) }
+    ],
+    letter: '致旅行者：\n感谢你又一年坚持记录。每一个被你记下的瞬间，都是时间赠予你的勋章。新的一年，愿你在地球Online 里继续探索、成长、收获属于自己的传奇。'
+  }
 }
 </script>
 
@@ -76,8 +114,12 @@ async function quick() {
   <div class="page wide" style="padding:0;display:flex;flex-direction:column">
     <div class="row between" style="padding:12px 16px 4px">
       <span class="chip"><Icon name="sparkles" :size="13" /> 云端 AI · 对话与快捷中枢已合并</span>
-      <button class="chip" @click="showConfig = true"><Icon name="settings" :size="14" /> 配置</button>
+      <div class="row" style="gap:6px">
+        <button class="chip" @click="buildReport()"><Icon name="chart" :size="14" /> 年度报告</button>
+        <button class="chip" @click="showConfig = true"><Icon name="settings" :size="14" /> 配置</button>
+      </div>
     </div>
+    <ReportRenderer v-if="report" :report="report" style="margin:4px 16px 0" />
 
     <div ref="scrollRef" style="flex:1;overflow-y:auto;padding:6px 16px 12px">
       <div v-if="!messages.length" class="muted" style="text-align:center;padding:30px">

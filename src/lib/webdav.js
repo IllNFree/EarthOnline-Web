@@ -126,6 +126,14 @@ export function mergeBackup(localState, remoteState) {
   ;['itemCategories', 'collectionCategories'].forEach((k) => {
     if (Array.isArray(remoteState[k])) patch[k] = mergeSimpleList(localState[k], remoteState[k], (x) => x.name)
   })
+  // v2.1.0：白板节点 / 连线 / 双向链接（按 id 主键合并，软删除随实体同步）
+  ;['whiteboardNodes', 'whiteboardEdges', 'biLinks'].forEach((k) => {
+    if (Array.isArray(remoteState[k])) patch[k] = mergeSimpleList(localState[k], remoteState[k], (x) => x.id)
+  })
+  // v2.1.0：看板布局（主键 = i）
+  if (Array.isArray(remoteState.dashboardLayout)) {
+    patch.dashboardLayout = mergeSimpleList(localState.dashboardLayout, remoteState.dashboardLayout, (x) => x.i)
+  }
   // 资料：远端非空字段优先（昵称 / 头像 / 签名属用户本人资料，跨端应当同步）
   if (remoteState.profile && typeof remoteState.profile === 'object') {
     const p = Object.assign({}, localState.profile || {})

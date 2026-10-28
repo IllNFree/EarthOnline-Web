@@ -8,11 +8,45 @@ import { useDialogStore } from './stores/dialog.js'
 import { xpLevelInfo, APP_INFO } from './lib/model.js'
 import Icon from './components/Icon.vue'
 import GlassDialog from './components/GlassDialog.vue'
+import GlobalContextMenu from './components/GlobalContextMenu.vue'
+import GlobalDragOverlay from './components/GlobalDragOverlay.vue'
+import HazeToast from './components/HazeToast.vue'
+import { useWebDAVSync } from './composables/useWebDAVSync.js'
+import { useGlobalDropZone } from './composables/useGlobalDropZone.js'
+import { useClipboardWatcher } from './composables/useClipboardWatcher.js'
+import { useNotificationService } from './composables/useNotificationService.js'
 
 const store = useAppStore()
 const dialog = useDialogStore()
 const route = useRoute()
-const routerPush = useRouter().push
+const router = useRouter()
+const routerPush = router.push
+
+// v2.1.0：全局生产力 composables 根级装配（红线 3：全局复用，页面内不重复造轮子）
+useWebDAVSync()
+const drop = useGlobalDropZone()
+drop.activate()
+const clip = useClipboardWatcher()
+clip.activate()
+clip.state.onAccept = (text) => {
+  const r = store.addMemo({ title: '剪贴板速记', markdown: text || '' })
+  if (r.ok) { store.showToast('已存入笔记'); router.push('/notes') }
+}
+const notif = useNotificationService()
+notif.activate()
+// 全局拖拽上传：图片直接入相册（页面组件亦可自行注册 onFiles 消费）
+drop.onFiles((files) => {
+  if (!files || !files.length) return
+  let added = 0
+  files.forEach((f) => {
+    if (f.type && f.type.startsWith('image/')) {
+      const r = new FileReader()
+      r.onload = () => { store.addPhoto({ name: f.name || '拖入图片', dataUrl: r.result, category: '拖入' }); added++ }
+      r.readAsDataURL(f)
+    }
+  })
+  setTimeout(() => { if (added) store.showToast('已存入相册 ' + added + ' 张') }, 300)
+})
 const level = computed(() => xpLevelInfo(store.xp))
 // 双模式自适应：≥900px = 电脑网站（侧边栏），<900px = 手机 PWA（底部悬浮导航）
 const isDesktop = useMediaQuery('(min-width: 900px)')
@@ -40,6 +74,8 @@ const navItems = [
   { name: 'tasks', icon: 'tasks', label: '任务' },
   { name: 'backpack', icon: 'backpack', label: '背包' },
   { name: 'notes', icon: 'note', label: '笔记' },
+  { name: 'whiteboard', icon: 'layout', label: '白板' },
+  { name: 'dashboard', icon: 'grid', label: '看板' },
   { name: 'settings', icon: 'settings', label: '设置' }
 ]
 // 电脑侧边栏导航（分组，覆盖全部页面）
@@ -54,6 +90,8 @@ const sideGroups = [
     { name: 'ledger', icon: 'wallet', label: '记账' }
   ] },
   { label: '扩展', items: [
+    { name: 'whiteboard', icon: 'layout', label: '白板' },
+    { name: 'dashboard', icon: 'grid', label: '自定义看板' },
     { name: 'steam', icon: 'cloud', label: 'Steam 游戏库' },
     { name: 'ai', icon: 'sparkles', label: 'AI 中枢' },
     { name: 'achievements', icon: 'trophy', label: '成就殿堂' },
@@ -275,6 +313,11 @@ onUnmounted(() => {
 
   <!-- 全局液态玻璃弹窗（替代原生 confirm/alert） -->
   <GlassDialog />
+
+  <!-- v2.1.0：全局生产力组件根级挂载 -->
+  <GlobalContextMenu />
+  <GlobalDragOverlay />
+  <HazeToast />
 </template>
 
 <style scoped>

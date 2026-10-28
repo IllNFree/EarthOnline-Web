@@ -140,7 +140,18 @@ export const useAppStore = defineStore('app', () => {
     addCategory: wrap(ops.addCategory),
     removeCategory: wrap(ops.removeCategory),
     addLedgerRecord: wrap(ops.addLedgerRecord),
-    deleteLedgerRecord: wrap(ops.deleteLedgerRecord)
+    deleteLedgerRecord: wrap(ops.deleteLedgerRecord),
+    // v2.1.0：白板（无限画布便利贴 + 连线）
+    addWhiteboardNode: wrap(ops.addWhiteboardNode),
+    updateWhiteboardNode: wrap(ops.updateWhiteboardNode),
+    deleteWhiteboardNode: wrap(ops.deleteWhiteboardNode),
+    addWhiteboardEdge: wrap(ops.addWhiteboardEdge),
+    deleteWhiteboardEdge: wrap(ops.deleteWhiteboardEdge),
+    // v2.1.0：双向链接
+    addBiLink: wrap(ops.addBiLink),
+    deleteBiLink: wrap(ops.deleteBiLink),
+    // v2.1.0：看板布局保存
+    saveDashboardLayout: wrap(ops.saveDashboardLayout)
   }
 
   function setTheme(t) {
