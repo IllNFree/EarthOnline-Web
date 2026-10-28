@@ -397,6 +397,25 @@ export function deleteWhiteboardEdge(state, id) {
   e.deletedAt = nowIso()
   return true
 }
+/**
+ * 确保某实体在画布上存在一个节点：存在则复用，否则在指定坐标（默认视口中心）创建。
+ * 这是「全实体节点化 + Tool Calling / 导入自动落节点」的统一入口。
+ */
+export function ensureWhiteboardNodeForEntity(state, data) {
+  const rawType = data.type === 'note' ? 'memo' : data.type
+  const type = ['task', 'memo', 'item', 'photo', 'collection', 'location', 'insight', 'profile', 'game'].includes(rawType) ? rawType : 'memo'
+  const refId = data.refId || null
+  const existing = state.whiteboardNodes.find((n) => !n.deletedAt && n.type === type && n.refId === refId)
+  if (existing) return { ok: true, node: existing, created: false }
+  const node = sanitizeWhiteboardNodeLocal({
+    type, refId,
+    x: Number(data.x) || 0, y: Number(data.y) || 0,
+    w: Number(data.w) || 220, h: Number(data.h) || 150,
+    color: data.color || 'amber', text: String(data.text || '')
+  })
+  state.whiteboardNodes.push(node)
+  return { ok: true, node, created: true }
+}
 
 // ---------- v2.1.0：双向链接（系统级实体关联 + 反向索引） ----------
 export function addBiLink(state, data) {
@@ -429,9 +448,10 @@ export function forwardLinksOf(state, type, id) {
 }
 
 function sanitizeWhiteboardNodeLocal(data) {
+  const rawType = data.type === 'note' ? 'memo' : data.type
   return {
     id: uid('wbn'),
-    type: ['task', 'memo', 'item', 'photo', 'note'].includes(data.type) ? data.type : 'note',
+    type: ['task', 'memo', 'item', 'photo', 'collection', 'location', 'insight', 'profile', 'game'].includes(rawType) ? rawType : 'memo',
     refId: data.refId || null,
     x: Number(data.x) || 0, y: Number(data.y) || 0,
     w: Math.min(1200, Math.max(120, Number(data.w) || 200)),

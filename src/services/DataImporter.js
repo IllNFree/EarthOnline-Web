@@ -2,6 +2,7 @@
 // 零依赖：内置稳健 CSV 解析器（正确处理引号/逗号/换行），避免引入 PapaParse 的构建风险。
 // 映射标准严格对齐 model.js 内部记账/笔记模型（camelCase）。
 import { useAppStore } from '../stores/app.js'
+import { canvasEnsureNode } from './canvasBridge.js'
 
 /** 稳健 CSV 解析：支持引号包裹、字段内逗号与换行、转义双引号 */
 export function parseCsv(text) {
@@ -53,6 +54,14 @@ function parseType(v) {
   return /收入|进账|收款/.test(String(v || '')) ? 'income' : 'expense'
 }
 
+/** 在画布视口生成节点网格（导入后落节点，需求 11） */
+function spawnGrid(type, ids, color) {
+  ids.forEach((id, i) => {
+    const col = i % 4, row = Math.floor(i / 4)
+    canvasEnsureNode(type, id, { x: 60 + col * 250, y: 60 + row * 180, color })
+  })
+}
+
 /**
  * 导入账单 CSV → 内部记账模型（逐条调用 store.addLedgerRecord）。
  * 返回 { ok, imported, skipped }。
@@ -77,6 +86,8 @@ export function importBillToLedger(text) {
     if (res.ok) imported++
     else skipped++
   }
+  // 账单无对应节点类型 → 生成一枚「洞察」节点汇总导入结果
+  if (imported > 0) canvasEnsureNode('insight', 'import-' + Date.now(), { center: true, color: 'gray', text: '导入账单 ' + imported + ' 笔' })
   return { ok: true, imported, skipped }
 }
 
@@ -85,6 +96,7 @@ export function importMarkdownToNotes(text) {
   const src = String(text || '').replace(/\r\n/g, '\n')
   if (!src.trim()) return { ok: false, error: '内容为空', imported: 0 }
   const store = useAppStore()
+  const ids = []
   // 按 H2 切分为多篇笔记（无 H2 则整篇一篇）
   const blocks = src.split(/\n\s*(#{1,2})\s+/).slice(1)
   let imported = 0
@@ -92,13 +104,16 @@ export function importMarkdownToNotes(text) {
     const firstHeading = src.match(/^#{1,2}\s+(.+)$/m)
     const title = firstHeading ? firstHeading[1].trim() : '导入笔记'
     const body = src.replace(/^#{1,2}\s+.+$/m, '').trim()
-    if (store.addMemo({ title, markdown: body }).ok) imported++
+    const res = store.addMemo({ title, markdown: body })
+    if (res.ok) { imported++; ids.push(res.memo.id) }
   } else {
     for (let i = 0; i < blocks.length; i += 2) {
       const title = blocks[i + 1] ? blocks[i + 1].trim() : '导入笔记'
       const body = blocks[i + 2] !== undefined ? blocks[i + 2] : blocks[i]
-      if (store.addMemo({ title: title.slice(0, 200), markdown: body.trim() }).ok) imported++
+      const res = store.addMemo({ title: title.slice(0, 200), markdown: body.trim() })
+      if (res.ok) { imported++; ids.push(res.memo.id) }
     }
   }
+  spawnGrid('memo', ids, 'amber')
   return { ok: true, imported }
 }

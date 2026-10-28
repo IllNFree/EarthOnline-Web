@@ -147,6 +147,7 @@ export const useAppStore = defineStore('app', () => {
     deleteWhiteboardNode: wrap(ops.deleteWhiteboardNode),
     addWhiteboardEdge: wrap(ops.addWhiteboardEdge),
     deleteWhiteboardEdge: wrap(ops.deleteWhiteboardEdge),
+    ensureWhiteboardNodeForEntity: wrap(ops.ensureWhiteboardNodeForEntity),
     // v2.1.0：双向链接
     addBiLink: wrap(ops.addBiLink),
     deleteBiLink: wrap(ops.deleteBiLink),

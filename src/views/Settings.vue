@@ -330,9 +330,19 @@ async function hardReset() {
     <div class="glass card row between" style="margin-bottom:10px">
       <div style="flex:1;min-width:0">
         <div style="font-weight:600">剪贴板智能监听</div>
-        <div class="muted" style="font-size:12px">切回网页时若剪贴板有新内容，右下角提示「加入笔记」</div>
+        <div class="muted" style="font-size:12px">切回网页时若剪贴板有新内容，右下角提示并孵化为笔记 / 相册 / 收藏节点</div>
       </div>
       <button class="btn ghost" @click="store.data.enableClipboardWatch = !store.data.enableClipboardWatch; store.persist()">{{ store.data.enableClipboardWatch ? '已开启' : '已关闭' }}</button>
+    </div>
+    <div class="glass card row between" style="margin-bottom:10px">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600">主页默认视图</div>
+        <div class="muted" style="font-size:12px">打开主页时默认展示「仪表盘」或「画布」模式</div>
+      </div>
+      <div class="capsule" style="display:inline-flex;padding:4px;gap:4px">
+        <button class="btn ghost" :style="store.data.homeDefaultView === 'dashboard' ? 'background:var(--eo-primary);color:#fff' : ''" @click="store.data.homeDefaultView = 'dashboard'; store.persist()">仪表盘</button>
+        <button class="btn ghost" :style="store.data.homeDefaultView === 'canvas' ? 'background:var(--eo-primary);color:#fff' : ''" @click="store.data.homeDefaultView = 'canvas'; store.persist()">画布</button>
+      </div>
     </div>
 
     <!-- 数据 · 备份与同步 -->

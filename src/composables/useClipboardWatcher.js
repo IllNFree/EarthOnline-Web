@@ -1,10 +1,10 @@
-// ===== 剪贴板智能监听（需求 8.3）：页面重新可见时读取剪贴板 =====
-// 监听 visibilitychange / focus；读取后右下角 Haze 气泡提示「是否加入笔记」。
+// ===== 剪贴板智能监听（需求 5 / 8.3）：页面重新可见时读取剪贴板并多态孵化 =====
+// 监听 visibilitychange / focus；读取后右下角 Haze 气泡提示，确认后按 MIME 类型孵化实体 + 节点。
 import { reactive } from 'vue'
 import { useAppStore } from '../stores/app.js'
+import { incubateClipboard } from '../services/ClipboardNodeFactory.js'
 
-const state = reactive({ visible: false, text: '', onAccept: null })
-let lastText = ''
+const state = reactive({ visible: false, text: '', kind: '', lastFp: '' })
 let timer = null
 
 export function useClipboardWatcher() {
@@ -12,17 +12,24 @@ export function useClipboardWatcher() {
 
   async function check() {
     if (store.data.enableClipboardWatch === false) return
-    if (typeof navigator === 'undefined' || !navigator.clipboard || !navigator.clipboard.readText) return
+    if (typeof navigator === 'undefined' || !navigator.clipboard || typeof navigator.clipboard.read !== 'function') return
     if (document.visibilityState !== 'visible') return
     try {
-      const text = await navigator.clipboard.readText()
-      if (!text || text === lastText || text.length > 2000) return
-      lastText = text
-      state.text = text.slice(0, 80)
+      const items = await navigator.clipboard.read()
+      if (!items || !items.length) return
+      const fp = JSON.stringify(items.map((i) => i.types))
+      if (fp === state.lastFp) return
+      state.lastFp = fp
+      const hasImg = items.some((i) => (i.types || []).some((t) => t.startsWith('image/')))
+      const hasText = items.some((i) => (i.types || []).includes('text/plain'))
+      state.kind = hasImg ? '图片' : hasText ? '文本 / 链接' : '文件'
+      state.text = '检测到剪贴板' + state.kind + '，可孵化为节点'
       state.visible = true
       clearTimeout(timer)
-      timer = setTimeout(() => { state.visible = false }, 9000)
-    } catch (e) { /* 无权限 / 不支持：静默 */ }
+      timer = setTimeout(() => { state.visible = false }, 12000)
+    } catch (e) {
+      // 无权限 / 不支持：静默降级
+    }
   }
 
   function activate() {
@@ -36,9 +43,11 @@ export function useClipboardWatcher() {
       window.removeEventListener('focus', onFocus)
     }
   }
-  function accept() {
-    if (typeof state.onAccept === 'function') { try { state.onAccept(lastText) } catch (e) {} }
+  async function accept() {
     state.visible = false
+    const r = await incubateClipboard()
+    if (r.ok && r.results && r.results.length) store.showToast('已从剪贴板孵化 ' + r.results.length + ' 个节点')
+    else if (!r.ok) store.showToast(r.error || '剪贴板孵化失败')
   }
   function dismiss() { state.visible = false }
   return { state, activate, accept, dismiss }

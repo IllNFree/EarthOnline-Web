@@ -9,12 +9,12 @@ const { state, accept, dismiss } = useClipboardWatcher()
   <teleport to="body">
     <transition name="hazetoast">
       <div v-if="state.visible" class="haze-toast glass glass-strong" role="status">
-        <span class="ht-illu"><Icon name="note" :size="18" /></span>
+        <span class="ht-illu"><Icon name="sparkles" :size="18" /></span>
         <div class="ht-body">
           <div class="ht-title">检测到剪贴板内容</div>
           <div class="ht-text">{{ state.text || '' }}</div>
         </div>
-        <button class="ht-btn" @click="accept">加入笔记</button>
+        <button class="ht-btn" @click="accept">孵化节点</button>
         <button class="ht-close" @click="dismiss"><Icon name="x" :size="14" /></button>
       </div>
     </transition>

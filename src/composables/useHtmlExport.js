@@ -61,3 +61,65 @@ export function useHtmlExport() {
 
   return { exportNode }
 }
+
+// ===== 画布导出（需求 8 / 11）：把白板节点 + 连线序列化为只读 HTML =====
+const NODE_BG = {
+  amber: '#F5E9DA', blue: '#DCE8F5', pink: '#F5DEE8', green: '#E1F0E2', purple: '#ECE8F5', gray: '#E8E8E8'
+}
+const TYPE_LABEL = { task: '任务', memo: '笔记', item: '物品', photo: '照片', collection: '收藏', location: '足迹', insight: '洞察', profile: '资料', game: '游戏' }
+
+export function exportCanvas(nodes, edges, resolve) {
+  if (typeof document === 'undefined') return
+  const live = nodes.filter((n) => !n.deletedAt)
+  const nodeHtml = live.map((n) => {
+    const e = resolve ? resolve(n) : null
+    let body = ''
+    if (n.type === 'task') body = e ? e.title : '（已删除）'
+    else if (n.type === 'memo') body = e ? (e.title + '\n' + (e.markdown || '').slice(0, 100)) : (n.text || '')
+    else if (n.type === 'photo') body = e ? '<img src="' + e.dataUrl + '" style="max-width:100%;border-radius:8px"/>' : '（已删除）'
+    else if (n.type === 'collection') body = e ? e.title : '（已删除）'
+    else if (n.type === 'item') body = e ? (e.name + ' ×' + e.count) : '（已删除）'
+    else if (n.type === 'location') body = e ? e.name : '（已删除）'
+    else if (n.type === 'insight') body = '收支洞察'
+    else if (n.type === 'profile') body = '个人资料'
+    else body = n.text || ''
+    return '<div style="position:absolute;left:' + n.x + 'px;top:' + n.y + 'px;width:' + n.w + 'px;height:' + n.h + 'px;' +
+      'background:' + (NODE_BG[n.color] || NODE_BG.amber) + ';border:1px solid rgba(0,0,0,.12);border-radius:14px;' +
+      'box-sizing:border-box;padding:8px 10px;overflow:hidden;box-shadow:0 10px 24px -14px rgba(120,90,50,.5);' +
+      'font-family:-apple-system,BlinkMacSystemFont,\'PingFang SC\',\'Microsoft YaHei\',sans-serif;color:#3A2F22">' +
+      '<div style="font-size:11px;font-weight:700;opacity:.6">' + (TYPE_LABEL[n.type] || n.type) + '</div>' +
+      '<div style="font-size:13px;font-weight:700;margin-top:2px;white-space:pre-wrap;overflow:hidden">' + escapeHtml(body) + '</div>' +
+      '</div>'
+  }).join('\n')
+
+  const edgeHtml = edges.filter((e) => !e.deletedAt).map((e) => {
+    const a = live.find((n) => n.id === e.from), b = live.find((n) => n.id === e.to)
+    if (!a || !b) return ''
+    return '<line x1="' + (a.x + a.w / 2) + '" y1="' + (a.y + a.h / 2) + '" x2="' + (b.x + b.w / 2) + '" y2="' + (b.y + b.h / 2) + '" stroke="rgba(123,111,168,.7)" stroke-width="2"/>'
+  }).join('\n')
+
+  const width = Math.max(1200, ...live.map((n) => n.x + n.w), 200)
+  const height = Math.max(800, ...live.map((n) => n.y + n.h), 200)
+
+  const html =
+    '<!doctype html>\n<html lang="zh-CN"><head><meta charset="utf-8">' +
+    '<meta name="viewport" content="width=device-width,initial-scale=1"><title>地球Online 画布导出</title>' +
+    '<style>html,body{margin:0;background:#EDE7DF;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",system-ui,sans-serif}' +
+    '.note{padding:10px 14px;font-size:12px;color:#6B645C;background:#F0EBE4}</style></head><body>' +
+    '<div class="note">地球Online 画布静态只读副本（导出时间：' + new Date().toLocaleString() + '）· Haze 已静态降级为半透明卡片</div>' +
+    '<svg width="' + width + '" height="' + height + '" style="position:absolute;left:0;top:0;overflow:visible">' + edgeHtml + '</svg>' +
+    nodeHtml + '</body></html>'
+
+  const blob = new Blob([html], { type: 'text/html' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = '地球Online-画布-' + new Date().toISOString().slice(0, 10) + '.html'
+  document.body.appendChild(a); a.click(); a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+function escapeHtml(s) {
+  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+

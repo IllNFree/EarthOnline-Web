@@ -187,7 +187,9 @@ export function defaultState() {
     biLinks: [],
     // v2.1.0：桌面级生产力交互开关（落库同步，对齐 Android 偏好）
     enableCustomContextMenu: true,
-    enableClipboardWatch: true
+    enableClipboardWatch: true,
+    // v2.1.0：主页默认视图（仪表盘 / 画布），设置中心可配
+    homeDefaultView: 'dashboard'
   }
 }
 
@@ -594,7 +596,8 @@ export function sanitizeState(raw) {
     dashboardLayout: arrOf(raw.dashboardLayout).filter((l) => l && typeof l === 'object' && l.i).map(sanitizeDashboardItem),
     biLinks: arrOf(raw.biLinks).filter((b) => b && typeof b === 'object' && b.id).map(sanitizeBiLink),
     enableCustomContextMenu: raw.enableCustomContextMenu === false ? false : true,
-    enableClipboardWatch: raw.enableClipboardWatch === false ? false : true
+    enableClipboardWatch: raw.enableClipboardWatch === false ? false : true,
+    homeDefaultView: raw.homeDefaultView === 'canvas' ? 'canvas' : 'dashboard'
   }
   // 旧模型 trash[] → 新模型 deletedAt（记录搬回各自集合，回收站内容不丢）
   migrateTrashToDeletedAt(s)
@@ -609,7 +612,8 @@ export function pushActivity(state, icon, text) {
 // ---------- v2.1.0：白板 / 看板 / 双向链接 容错清洗 ----------
 function sanitizeWhiteboardNode(n) {
   const id = str(n.id) || uid('wbn')
-  const type = ['task', 'memo', 'item', 'photo', 'note'].includes(n.type) ? n.type : 'note'
+  const rawType = n.type === 'note' ? 'memo' : n.type
+  const type = ['task', 'memo', 'item', 'photo', 'collection', 'location', 'insight', 'profile', 'game'].includes(rawType) ? rawType : 'memo'
   return {
     id,
     type,

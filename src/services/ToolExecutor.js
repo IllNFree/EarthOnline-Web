@@ -1,6 +1,7 @@
 // ===== Tool Calling 意图分发（需求 3）：全局单例，按 tool_name 路由本地 Service =====
 // 红线 3：严禁在 UI 组件内直接写 Tool 调用逻辑；所有调用统一走这里。
 import { useAppStore } from '../stores/app.js'
+import { canvasEnsureNode } from './canvasBridge.js'
 
 // 中台定义的 JSON Schema Tool 接口（前端消费契约，可扩展）
 export const TOOL_SCHEMAS = {
@@ -31,6 +32,11 @@ export function useToolExecutor() {
   if (_instance) return _instance
   const store = useAppStore()
 
+  // 若画布打开，把创建的实体自动落为一个画布节点（需求 11）
+  function dropNode(type, id, color) {
+    try { canvasEnsureNode(type, id, { center: true, color }) } catch (e) { /* 画布未开：静默 */ }
+  }
+
   function execute(toolCall) {
     const name = (toolCall && (toolCall.tool_name || toolCall.name)) || ''
     const p = (toolCall && (toolCall.parameters || toolCall.arguments || {})) || {}
@@ -42,10 +48,12 @@ export function useToolExecutor() {
           category: ['main', 'side', 'todo'].includes(p.category) ? p.category : 'side',
           dueDate: p.dueDate || null
         })
+        if (r.ok) dropNode('task', r.task.id, 'green')
         return r.ok ? { ok: true, message: '已创建任务', entity: r.task } : { ok: false, error: r.error }
       }
       case 'create_note': {
         const r = store.addMemo({ title: p.title || '快捷笔记', markdown: p.markdown || p.title || '' })
+        if (r.ok) dropNode('memo', r.memo.id, 'amber')
         return r.ok ? { ok: true, message: '已保存笔记', entity: r.memo } : { ok: false, error: r.error }
       }
       case 'create_ledger': {
@@ -66,6 +74,7 @@ export function useToolExecutor() {
           count: Number(p.count) || 1,
           description: p.description || ''
         })
+        if (r.ok) dropNode('item', r.item.id, 'purple')
         return r.ok ? { ok: true, message: '已收入物品', entity: r.item } : { ok: false, error: r.error }
       }
       case 'add_location': {
@@ -74,6 +83,7 @@ export function useToolExecutor() {
           lat: Number(p.lat) || 0, lng: Number(p.lng) || 0,
           note: p.note || '', date: p.date || ''
         })
+        if (r.ok) dropNode('location', r.entry.id, 'blue')
         return r.ok ? { ok: true, message: '已添加足迹', entity: r.entry } : { ok: false, error: r.error }
       }
       default:
