@@ -46,8 +46,11 @@ export function useClipboardWatcher() {
   async function accept() {
     state.visible = false
     const r = await incubateClipboard()
-    if (r.ok && r.results && r.results.length) store.showToast('已从剪贴板孵化 ' + r.results.length + ' 个节点')
-    else if (!r.ok) store.showToast(r.error || '剪贴板孵化失败')
+    if (r.ok && r.results && r.results.length) {
+      store.showToast('已从剪贴板孵化 ' + r.results.length + ' 个节点')
+      // 模块六：剪贴板捕获里程碑（触发 Web 专属成就）
+      store.bumpMilestone('clipboardCatch')
+    } else if (!r.ok) store.showToast(r.error || '剪贴板孵化失败')
   }
   function dismiss() { state.visible = false }
   return { state, activate, accept, dismiss }

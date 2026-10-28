@@ -30,6 +30,13 @@
   --eo-bad: #C4634C;
   --eo-chip: rgba(212, 163, 115, 0.15);
   --eo-sidebar-w: 236px;
+  /* 模块四：光标聚光灯（Spotlight）主题化参数
+     浅色模式：提高光斑亮度与遮罩对比，让高光更清晰可见 */
+  --spotlight-opacity: 0.92;
+  --spotlight-color: rgba(255, 255, 255, 0.72);
+  --spotlight-hover-opacity: 1;
+  --spotlight-hover-color: rgba(255, 255, 255, 0.88);
+  --spotlight-radius: 340px;
 }
 [data-theme='dark'] {
   --eo-primary: #D4A373;
@@ -52,6 +59,12 @@
   --eo-good: #6BAF84;
   --eo-bad: #D97F66;
   --eo-chip: rgba(212, 163, 115, 0.2);
+  /* 模块四：深色模式聚光灯减弱 —— 暖色微光 + 更低不透明度，避免用力过猛刺眼 */
+  --spotlight-opacity: 0.42;
+  --spotlight-color: rgba(255, 235, 210, 0.26);
+  --spotlight-hover-opacity: 0.55;
+  --spotlight-hover-color: rgba(255, 235, 210, 0.34);
+  --spotlight-radius: 300px;
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -94,13 +107,13 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .glass::before {
   content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
   background:
-    radial-gradient(340px circle at var(--mx, 50%) var(--my, 0%), rgba(255, 255, 255, 0.52), transparent 60%),
+    radial-gradient(var(--spotlight-radius, 340px) circle at var(--mx, 50%) var(--my, 0%), var(--spotlight-color, rgba(255,255,255,.72)), transparent 60%),
     linear-gradient(125deg,
     rgba(255, 255, 255, 0.42) 0%,
     rgba(255, 255, 255, 0.14) 18%,
     transparent 42%, transparent 68%,
     rgba(255, 255, 255, 0.10) 100%);
-  opacity: calc(.82 * var(--eo-glass-sheen, 1));
+  opacity: calc(var(--spotlight-opacity, .92) * var(--eo-glass-sheen, 1));
   mix-blend-mode: screen;
   transition: opacity .3s ease;
 }
@@ -110,9 +123,9 @@ input, textarea, select { font-family: inherit; color: inherit; }
 @media (hover: hover) {
   /* 悬浮增强：聚光灯更亮 + 暖色微光晕，凸显动态质感 */
   .glass.card:hover::before, .glass.list-item:hover::before, .eo-card.glass:hover::before {
-    opacity: 1;
+    opacity: calc(var(--spotlight-hover-opacity, 1) * var(--eo-glass-sheen, 1));
     background:
-      radial-gradient(380px circle at var(--mx, 50%) var(--my, 0%), rgba(255, 255, 255, 0.66), transparent 58%),
+      radial-gradient(var(--spotlight-radius, 340px) circle at var(--mx, 50%) var(--my, 0%), var(--spotlight-hover-color, rgba(255,255,255,.88)), transparent 58%),
       linear-gradient(125deg, rgba(255,255,255,0.46) 0%, rgba(255,255,255,0.16) 18%, transparent 42%, transparent 68%, rgba(255,255,255,0.12) 100%);
   }
 }

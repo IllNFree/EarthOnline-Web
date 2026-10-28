@@ -1,35 +1,47 @@
 <script setup>
-// ===== 终极自定义看板（需求 9 / 2）：grid-layout-plus 驱动的可拖拽 / 缩放 / 吸附看板 =====
-// 模块通过 MODULES 注册表接入（不硬编码），布局位置序列化至 IndexedDB 并纳入 WebDAV 同步契约。
+// ===== 自定义看板（全局组件，模块二）=====
+// grid-layout-plus 驱动的可拖拽 / 缩放 / 吸附看板：
+//   · 模块通过 MODULES 注册表接入（不硬编码），新增模块只需注册一项
+//   · 布局位置序列化至 store.data.dashboardLayout（已纳入 WebDAV 同步契约）
+//   · 满血 Haze：看板卡片使用 .glass，backdrop-filter 不降级
 import { ref, computed, watch } from 'vue'
 import { GridLayout, GridItem } from 'grid-layout-plus'
 import { useAppStore } from '../stores/app.js'
-import Icon from '../components/Icon.vue'
+import Icon from './Icon.vue'
 import { xpLevelInfo } from '../lib/model.js'
+
+const props = defineProps({
+  // 允许外部覆盖默认注册表（注册制接入，不硬编码业务）
+  modules: { type: Array, default: null }
+})
 
 const store = useAppStore()
 
-// 模块注册表（需求 9：看板内部模块通过注册制接入，不硬编码）
-const REGISTRY = [
+// 模块注册表：看板内部模块通过注册制接入
+const DEFAULT_MODULES = [
   { i: 'tasks', label: '任务', icon: 'tasks', w: 6, h: 4 },
   { i: 'chart', label: '收支趋势', icon: 'chart', w: 6, h: 4 },
   { i: 'calendar', label: '日历', icon: 'calendar', w: 7, h: 4 },
   { i: 'stats', label: '成长数据', icon: 'trophy', w: 5, h: 4 },
   { i: 'recent', label: '最近动态', icon: 'clock', w: 12, h: 3 }
 ]
+const REGISTRY = computed(() => (Array.isArray(props.modules) && props.modules.length ? props.modules : DEFAULT_MODULES))
 
 const layout = ref([])
 const ready = ref(false)
 
-// 初始化：复用持久化布局（dashboardLayout 已纳入同步契约），缺省用注册表默认
-layout.value = (store.data.dashboardLayout && store.data.dashboardLayout.length)
-  ? store.data.dashboardLayout.slice()
-  : REGISTRY.map((m) => ({ i: m.i, x: 0, y: 0, w: m.w, h: m.h, module: m.i }))
-// 简单流式排布缺省布局
-if (!store.data.dashboardLayout || !store.data.dashboardLayout.length) {
+// 初始化：复用持久化布局（dashboardLayout 已纳入同步契约），缺省用注册表默认流式排布
+function buildDefault() {
+  const arr = REGISTRY.value.map((m) => ({ i: m.i, x: 0, y: 0, w: m.w, h: m.h, module: m.i }))
   let y = 0
-  REGISTRY.forEach((m) => { const it = layout.value.find((l) => l.i === m.i); if (it) { it.x = 0; it.y = y; y += m.h } })
+  REGISTRY.value.forEach((m) => {
+    const it = arr.find((l) => l.i === m.i)
+    if (it) { it.x = 0; it.y = y; y += m.h }
+  })
+  return arr
 }
+const saved = store.data.dashboardLayout
+layout.value = Array.isArray(saved) && saved.length ? saved.slice() : buildDefault()
 ready.value = true
 
 let saveTimer = null
@@ -51,7 +63,7 @@ const calDays = computed(() => {
   for (let d = 1; d <= days; d++) arr.push(d)
   return arr
 })
-// 收支趋势（近 6 月，红支 / 绿收）—— 与洞察节点同源图表
+// 收支趋势（近 6 月，红支 / 绿收）
 const trend = computed(() => {
   const recs = store.data.ledger.records || []
   const months = []
@@ -65,22 +77,20 @@ const trend = computed(() => {
   return { months, inc, exp, max }
 })
 function resetLayout() {
-  let y = 0
-  REGISTRY.forEach((m) => {
-    let it = layout.value.find((l) => l.i === m.i)
-    if (!it) { it = { i: m.i, x: 0, y: 0, w: m.w, h: m.h, module: m.i }; layout.value.push(it) }
-    it.x = 0; it.y = y; it.w = m.w; it.h = m.h; y += m.h
-  })
+  layout.value = buildDefault()
   commit()
 }
+function metaOf(i) { return REGISTRY.value.find((m) => m.i === i) || { label: i, icon: 'tag' } }
 </script>
 
 <template>
-  <div class="page wide">
-    <div class="section-title">
-      自定义看板
-      <span class="muted" style="font-size:12px">拖拽卡片排版，右下角缩放；布局自动保存并同步</span>
-      <button class="btn ghost" style="margin-left:auto" @click="resetLayout"><Icon name="reset" :size="14" /> 重置</button>
+  <div class="db-wrap">
+    <div class="db-head">
+      <span class="db-head-title">
+        <Icon name="grid" :size="15" /> 自定义看板
+      </span>
+      <span class="muted db-head-tip">拖拽卡片排版，右下角缩放；布局自动保存并同步</span>
+      <button class="btn ghost db-head-reset" @click="resetLayout"><Icon name="reset" :size="14" /> 重置</button>
     </div>
     <GridLayout
       v-if="ready"
@@ -96,7 +106,7 @@ function resetLayout() {
       <GridItem v-for="it in layout" :key="it.i" :i="it.i" :x="it.x" :y="it.y" :w="it.w" :h="it.h" drag-allow-from=".gl-head" drag-ignore-from=".gl-body">
         <div class="dash-item glass">
           <div class="gl-head">
-            <span><Icon :name="(REGISTRY.find(m=>m.i===it.i)||{}).icon || 'tag'" :size="15" /> {{ (REGISTRY.find(m=>m.i===it.i)||{}).label || it.i }}</span>
+            <span><Icon :name="metaOf(it.i).icon" :size="15" /> {{ metaOf(it.i).label }}</span>
           </div>
           <div class="gl-body">
             <template v-if="it.i === 'tasks'">
@@ -112,7 +122,7 @@ function resetLayout() {
             <template v-else-if="it.i === 'calendar'">
               <div class="dash-cal-title">{{ monthLabel }}</div>
               <div class="dash-cal">
-                <span v-for="(d,i) in calDays" :key="i" class="dash-cal-cell" :class="{ today: d === today.getDate() }">{{ d || '' }}</span>
+                <span v-for="(d, i) in calDays" :key="i" class="dash-cal-cell" :class="{ today: d === today.getDate() }">{{ d || '' }}</span>
               </div>
             </template>
             <template v-else-if="it.i === 'recent'">
@@ -135,6 +145,11 @@ function resetLayout() {
 </template>
 
 <style scoped>
+.db-wrap { width: 100%; }
+.db-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.db-head-title { display: inline-flex; align-items: center; gap: 6px; font-weight: 800; font-size: 15px; color: var(--eo-ink); }
+.db-head-tip { font-size: 12px; }
+.db-head-reset { margin-left: auto; }
 .gl-wrap { width: 100%; }
 .dash-item { height: 100%; border-radius: var(--eo-radius-sm); padding: 0; overflow: hidden; display: flex; flex-direction: column; }
 .gl-head { display: flex; align-items: center; gap: 6px; padding: 9px 12px; font-size: 13px; font-weight: 700; color: var(--eo-primary-deep); border-bottom: 1px solid var(--eo-glass-border); cursor: move; }

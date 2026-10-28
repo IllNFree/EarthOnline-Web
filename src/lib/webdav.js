@@ -132,7 +132,20 @@ export function mergeBackup(localState, remoteState) {
   })
   // v2.1.0：看板布局（主键 = i）
   if (Array.isArray(remoteState.dashboardLayout)) {
-    patch.dashboardLayout = mergeSimpleList(localState.dashboardLayout, remoteState.dashboardLayout, (x) => x.i)
+    patch.dashboardLayout = mergeSimpleList(localState.dashboardLayout || [], remoteState.dashboardLayout, (x) => x.i)
+  }
+  // v2.1.0：Web 专属成就里程碑计数（逐项取较大值，跨端/多设备合并不倒退）
+  if (remoteState.webMilestones && typeof remoteState.webMilestones === 'object') {
+    const localM = localState.webMilestones || {}
+    const m = {}
+    Object.keys(remoteState.webMilestones).forEach((k) => {
+      const lv = Number(localM[k]) || 0
+      const rv = Number(remoteState.webMilestones[k]) || 0
+      m[k] = Math.max(lv, rv)
+    })
+    // 本地已有但远端没有的键也要保留
+    Object.keys(localM).forEach((k) => { if (m[k] === undefined) m[k] = Number(localM[k]) || 0 })
+    patch.webMilestones = m
   }
   // 资料：远端非空字段优先（昵称 / 头像 / 签名属用户本人资料，跨端应当同步）
   if (remoteState.profile && typeof remoteState.profile === 'object') {

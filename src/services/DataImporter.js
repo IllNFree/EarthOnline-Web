@@ -87,7 +87,11 @@ export function importBillToLedger(text) {
     else skipped++
   }
   // 账单无对应节点类型 → 生成一枚「洞察」节点汇总导入结果
-  if (imported > 0) canvasEnsureNode('insight', 'import-' + Date.now(), { center: true, color: 'gray', text: '导入账单 ' + imported + ' 笔' })
+  if (imported > 0) {
+    canvasEnsureNode('insight', 'import-' + Date.now(), { center: true, color: 'gray', text: '导入账单 ' + imported + ' 笔' })
+    // 模块六：外部数据导入里程碑（触发 Web 专属成就）
+    store.bumpMilestone('dataImport')
+  }
   return { ok: true, imported, skipped }
 }
 
@@ -115,5 +119,9 @@ export function importMarkdownToNotes(text) {
     }
   }
   spawnGrid('memo', ids, 'amber')
+  if (imported > 0) {
+    // 模块六：外部数据导入里程碑（触发 Web 专属成就）
+    store.bumpMilestone('dataImport')
+  }
   return { ok: true, imported }
 }

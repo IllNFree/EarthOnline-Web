@@ -52,7 +52,19 @@ export const ACHIEVEMENTS = [
   { key: 'egg_memo_emoji', title: '表情包', desc: '笔记含 emoji', xp: 5, icon: 'egg' },
   { key: 'egg_newyear', title: '新年快乐', desc: '元旦打卡', xp: 20, icon: 'egg' },
   { key: 'egg_throwback', title: '时光机', desc: '查看历年今日', xp: 15, icon: 'egg' },
-  { key: 'egg_memory_album', title: '回忆相册', desc: '打开记忆相册', xp: 15, icon: 'egg' }
+  { key: 'egg_memory_album', title: '回忆相册', desc: '打开记忆相册', xp: 15, icon: 'egg' },
+  // ===== v2.1.0 Web 专属成就（Web 独有能力，不进 canonical 三端）=====
+  { key: 'web_whiteboard_first', title: '开板', desc: '在画布上创建第一个节点', xp: 15, icon: 'layout' },
+  { key: 'web_whiteboard_ten', title: '灵感墙', desc: '画布上累计 10 个节点', xp: 40, icon: 'layout' },
+  { key: 'web_bilink_first', title: '牵线搭桥', desc: '建立第一条双向链接', xp: 15, icon: 'link' },
+  { key: 'web_bilink_ten', title: '知识网络', desc: '累计 10 条双向链接', xp: 40, icon: 'link' },
+  { key: 'web_dashboard_first', title: '自定义看板', desc: '拖拽调整一次看板布局', xp: 20, icon: 'grid' },
+  { key: 'web_ai_chat', title: '灵光一现', desc: '与 AI 中枢完成一次对话', xp: 20, icon: 'sparkles' },
+  { key: 'web_tool_call', title: '言出必行', desc: '通过自然语言让 AI 执行一次操作', xp: 30, icon: 'sparkles' },
+  { key: 'web_import_data', title: '拾荒者', desc: '导入一次外部账单或旧版笔记', xp: 20, icon: 'download' },
+  { key: 'web_drag_upload', title: '拖拽入库', desc: '把文件拖入窗口完成上传', xp: 20, icon: 'upload' },
+  { key: 'web_period_report', title: '复盘大师', desc: '生成一份 AI 周期报告', xp: 30, icon: 'chart' },
+  { key: 'web_clipboard_catch', title: '灵光一现（剪贴板）', desc: '通过剪贴板监听捕获一次内容', xp: 15, icon: 'note' }
 ]
 
 const BY_KEY = Object.fromEntries(ACHIEVEMENTS.map((a) => [a.key, a]))
@@ -99,6 +111,21 @@ export function evaluate(state) {
   if (ach.length >= 30) add('grand_slam')
   if ((s.eggs && s.eggs.throwbackViewed)) add('egg_throwback')
   if ((s.eggs && s.eggs.albumViewed)) add('egg_memory_album')
+  // ===== v2.1.0 Web 专属成就判定（Web 独有能力，不参与 canonical 三端对齐）=====
+  const wn = Array.isArray(s.whiteboardNodes) ? s.whiteboardNodes : []
+  if (wn.length >= 1) add('web_whiteboard_first')
+  if (wn.length >= 10) add('web_whiteboard_ten')
+  const bl = Array.isArray(s.biLinks) ? s.biLinks : []
+  if (bl.length >= 1) add('web_bilink_first')
+  if (bl.length >= 10) add('web_bilink_ten')
+  if (Array.isArray(s.dashboardLayout) && s.dashboardLayout.length >= 2) add('web_dashboard_first')
+  const wm = s.webMilestones || {}
+  if ((wm.aiChat || 0) >= 1) add('web_ai_chat')
+  if ((wm.toolCall || 0) >= 1) add('web_tool_call')
+  if ((wm.dataImport || 0) >= 1) add('web_import_data')
+  if ((wm.dragUpload || 0) >= 1) add('web_drag_upload')
+  if ((wm.clipboardCatch || 0) >= 1) add('web_clipboard_catch')
+  if ((wm.periodReport || 0) >= 1) add('web_period_report')
   return set
 }
 

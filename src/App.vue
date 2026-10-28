@@ -9,6 +9,7 @@ import { xpLevelInfo, APP_INFO } from './lib/model.js'
 import Icon from './components/Icon.vue'
 import GlassDialog from './components/GlassDialog.vue'
 import GlobalContextMenu from './components/GlobalContextMenu.vue'
+import { openContextMenu } from './composables/useContextMenu.js'
 import GlobalDragOverlay from './components/GlobalDragOverlay.vue'
 import HazeToast from './components/HazeToast.vue'
 import { useWebDAVSync } from './composables/useWebDAVSync.js'
@@ -45,11 +46,18 @@ drop.onFiles((files) => {
       r.readAsDataURL(f)
     }
   })
+  // 模块六：拖拽上传里程碑（触发 Web 专属成就）
+  store.bumpMilestone('dragUpload')
   setTimeout(() => { if (added) store.showToast('已存入相册 ' + added + ' 张') }, 300)
 })
 const level = computed(() => xpLevelInfo(store.xp))
 // 双模式自适应：≥900px = 电脑网站（侧边栏），<900px = 手机 PWA（底部悬浮导航）
 const isDesktop = useMediaQuery('(min-width: 900px)')
+// 模块五：FAB 自适应 —— 宽屏（≥1024px）/ 横屏隐藏，移动端 / 竖屏窄屏显示（触控可达）
+const isWide = useMediaQuery('(min-width: 1024px)')
+const isPortrait = useMediaQuery('(orientation: portrait)')
+// 规则：PC 宽屏隐藏；横屏隐藏；窄屏竖屏显示
+const showFab = computed(() => !isWide.value && (isPortrait.value || !isDesktop.value))
 
 // 壁纸层：wallAlpha 存的是「不透明度 alpha」(0=完全透明看不见, 1=完全实体)
 // 滑块展示「透明度」(0%=实体, 100%=彻底透明)，因此这里用的是 1 - 透明度
@@ -74,11 +82,10 @@ const navItems = [
   { name: 'tasks', icon: 'tasks', label: '任务' },
   { name: 'backpack', icon: 'backpack', label: '背包' },
   { name: 'notes', icon: 'note', label: '笔记' },
-  { name: 'whiteboard', icon: 'layout', label: '白板' },
-  { name: 'dashboard', icon: 'grid', label: '看板' },
+  { name: 'dashboard', icon: 'chart', label: '数据' },
   { name: 'settings', icon: 'settings', label: '设置' }
 ]
-// 电脑侧边栏导航（分组，覆盖全部页面）
+// 电脑侧边栏导航（分组，覆盖全部页面）；白板已收拢至主页内部 Tab，不再单独入口
 const sideGroups = [
   { label: '主功能', items: [
     { name: 'home', icon: 'home', label: '主页' },
@@ -90,12 +97,10 @@ const sideGroups = [
     { name: 'ledger', icon: 'wallet', label: '记账' }
   ] },
   { label: '扩展', items: [
-    { name: 'whiteboard', icon: 'layout', label: '白板' },
-    { name: 'dashboard', icon: 'grid', label: '自定义看板' },
+    { name: 'dashboard', icon: 'chart', label: '数据中心' },
     { name: 'steam', icon: 'cloud', label: 'Steam 游戏库' },
     { name: 'ai', icon: 'sparkles', label: 'AI 中枢' },
-    { name: 'achievements', icon: 'trophy', label: '成就殿堂' },
-    { name: 'stats', icon: 'chart', label: '数据中心' }
+    { name: 'achievements', icon: 'trophy', label: '成就殿堂' }
   ] },
   { label: '系统', items: [
     { name: 'trash', icon: 'trash', label: '回收站' },
@@ -133,10 +138,38 @@ const resultCount = computed(() => store.searchResults.reduce((n, g) => n + g.it
 
 let mq
 let spotlightHandler = null
+let ctxHandler = null
 // 主 Tab 路由（Esc 返回逻辑中的「非二级页」）
 const MAIN_PATHS = ['/', '/tasks', '/backpack', '/notes', '/settings']
 let escHandler = null
+
+// 模块四：全局右键菜单 —— 监听 contextmenu，构建差异化菜单并交给 useContextMenu 渲染。
+// 红线：enableCustomContextMenu 关闭时 openContextMenu 内部直接 return 不拦截 → 原生菜单放行。
+function buildContextItems(el) {
+  const items = [
+    { icon: 'tasks', label: '新建任务', action: () => routerPush('/tasks') },
+    { icon: 'note', label: '写笔记', action: () => routerPush('/notes') },
+    { icon: 'wallet', label: '记一笔', action: () => routerPush('/ledger') }
+  ]
+  // 若右键落在带 data-ctx 的元素上，追加其声明的自定义项（多区域差异化）
+  if (el && el.dataset && el.dataset.ctx) {
+    try {
+      const extra = JSON.parse(el.dataset.ctx)
+      if (Array.isArray(extra)) extra.forEach((it) => it && it.label && items.push(it))
+    } catch { /* 忽略非法声明 */ }
+  }
+  items.push({ icon: 'home', label: '回到主页', action: () => routerPush('/') })
+  return items
+}
+function onContextMenu(e) {
+  const el = e.target && e.target.closest ? e.target.closest('[data-ctx], .glass, .page, body') : document.body
+  const ok = openContextMenu(e, buildContextItems(el))
+  if (!ok) { /* 开关关闭：不拦截，原生菜单出现 */ }
+}
 onMounted(() => {
+  // 模块四：注册全局右键拦截（开关关闭时 openContextMenu 自动放行原生菜单）
+  ctxHandler = onContextMenu
+  document.addEventListener('contextmenu', ctxHandler)
   // 移除内联启动屏（消除首访白屏闪烁）
   const sp = document.getElementById('eo-splash')
   if (sp) { sp.style.transition = 'opacity .28s ease'; sp.style.opacity = '0'; setTimeout(() => sp.remove(), 300) }
@@ -173,6 +206,7 @@ onUnmounted(() => {
   mq && mq.removeEventListener && mq.removeEventListener('change', () => {})
   if (spotlightHandler) document.removeEventListener('pointermove', spotlightHandler)
   if (escHandler) document.removeEventListener('keydown', escHandler)
+  if (ctxHandler) document.removeEventListener('contextmenu', ctxHandler)
 })
 </script>
 
@@ -244,8 +278,8 @@ onUnmounted(() => {
     </router-view>
   </div>
 
-  <!-- 全局新增 FAB（列表页自行注册自己的「新增」动作，右下角悬浮，对齐 Android 列表页 FAB） -->
-  <motion.button v-if="store.quickAdd" class="quick-fab" :while-hover="{ y: -1, scale: 1.02 }" :while-press="{ scale: 0.94 }" :transition="{ type: 'spring', stiffness: 420, damping: 24 }" @click="store.runQuickAdd()" aria-label="新增">
+  <!-- 全局新增 FAB：移动端 / 竖屏窄屏显示（触控可达）；PC 宽屏隐藏（已有快捷入口与右键菜单） -->
+  <motion.button v-if="store.quickAdd && showFab" class="quick-fab" :while-hover="{ y: -1, scale: 1.02 }" :while-press="{ scale: 0.94 }" :transition="{ type: 'spring', stiffness: 420, damping: 24 }" @click="store.runQuickAdd()" aria-label="新增">
     <Icon name="plus" :size="26" />
   </motion.button>
 

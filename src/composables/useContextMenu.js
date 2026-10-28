@@ -6,11 +6,22 @@ import { useAppStore } from '../stores/app.js'
 // 模块级共享状态（单例）：全局只存在一个右键菜单
 const state = reactive({ visible: false, x: 0, y: 0, items: [] })
 
+// 可编辑区域内（输入框 / 文本域 / contenteditable）保留浏览器原生右键菜单，
+// 否则用户将失去复制、粘贴等基础操作能力。
+function isEditableTarget(el) {
+  if (!el || !el.tagName) return false
+  const tag = String(el.tagName).toLowerCase()
+  if (tag === 'input' || tag === 'textarea' || tag === 'select') return true
+  return !!el.isContentEditable
+}
+
 export function openContextMenu(event, items) {
   const store = useAppStore()
-  // 红线 6：右键开关必须生效。关闭时直接 return，不拦截、不 preventDefault → 原生菜单出现
+  // 红线 6：右键开关必须生效。关闭时直接 return，不拦截 → 原生菜单出现
   if (store.data.enableCustomContextMenu === false) return false
   if (!event || typeof event.preventDefault !== 'function') return false
+  // 可编辑区域放行原生菜单（保留复制 / 粘贴）
+  if (isEditableTarget(event.target)) return false
   event.preventDefault()
   event.stopPropagation()
   const menuW = 224

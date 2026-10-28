@@ -5,7 +5,6 @@ import { testConnection, chatStream, decodeQuickIntent, applyIntent } from '../l
 import { useToolExecutor } from '../services/ToolExecutor.js'
 import Icon from '../components/Icon.vue'
 import Modal from '../components/GlassBottomSheet.vue'
-import ReportRenderer from '../components/ReportRenderer.vue'
 
 const store = useAppStore()
 const tool = useToolExecutor()
@@ -56,6 +55,9 @@ async function send() {
     if (msg && !msg.content) msg.content = '（出错了：' + r.error + '）'
     else if (msg) msg.content += '\n（连接中断：' + r.error + '）'
     store.persistAi()
+  } else {
+    // 模块六：AI 对话里程碑（触发 Web 专属成就）
+    store.bumpMilestone('aiChat')
   }
   scrollDown()
 }
@@ -81,33 +83,14 @@ async function quick() {
     res = tr.ok ? { ok: true, label: tr.message } : { ok: false, error: tr.error }
   }
   store.pushAi('assistant', res.ok ? res.label : ('未能执行：' + (res.error || '请稍后再试')))
-  if (res.ok) store.showToast(res.label)
+  if (res.ok) {
+    store.showToast(res.label)
+    // 模块六：自然语言执行操作里程碑（Tool Calling 触发）
+    store.bumpMilestone('toolCall')
+  }
 }
 
-// 需求 2：AI 主动服务与报告（Web 端展示）—— 从真实数据派生「年度人生报告」
-const report = ref(null)
-function buildReport() {
-  const now = new Date()
-  const months = []
-  for (let i = 5; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
-    const ym = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')
-    const tasks = store.live.tasks.filter((t) => (t.createdAt || '').slice(0, 7) === ym).length
-    const expense = store.data.ledger.records
-      .filter((r) => (r.date || '').slice(0, 7) === ym && r.type === 'expense')
-      .reduce((s, r) => s + (Number(r.amount) || 0), 0)
-    months.push({ ym, tasks, expense })
-  }
-  report.value = {
-    title: now.getFullYear() + ' 年度人生报告',
-    summary: '今年你共创建 ' + store.live.tasks.length + ' 个任务，记账 ' + store.data.ledger.records.length + ' 笔。人生这场开放世界游戏，你一直在前进。',
-    trends: [
-      { label: '每月新增任务', unit: '个', points: months.map((m) => ({ date: m.ym, value: m.tasks })) },
-      { label: '每月支出', unit: '元', points: months.map((m) => ({ date: m.ym, value: Math.round(m.expense) })) }
-    ],
-    letter: '致旅行者：\n感谢你又一年坚持记录。每一个被你记下的瞬间，都是时间赠予你的勋章。新的一年，愿你在地球Online 里继续探索、成长、收获属于自己的传奇。'
-  }
-}
+// 模块二：报告生成入口已迁至「数据中心 → 周期报告」，AI 中枢仅保留对话与工具调用。
 </script>
 
 <template>
@@ -115,11 +98,9 @@ function buildReport() {
     <div class="row between" style="padding:12px 16px 4px">
       <span class="chip"><Icon name="sparkles" :size="13" /> 云端 AI · 对话与快捷中枢已合并</span>
       <div class="row" style="gap:6px">
-        <button class="chip" @click="buildReport()"><Icon name="chart" :size="14" /> 年度报告</button>
         <button class="chip" @click="showConfig = true"><Icon name="settings" :size="14" /> 配置</button>
       </div>
     </div>
-    <ReportRenderer v-if="report" :report="report" style="margin:4px 16px 0" />
 
     <div ref="scrollRef" style="flex:1;overflow-y:auto;padding:6px 16px 12px">
       <div v-if="!messages.length" class="muted" style="text-align:center;padding:30px">

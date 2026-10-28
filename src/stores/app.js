@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { computed, reactive, ref } from 'vue'
 import { loadState, saveState, resetAll } from '../lib/storage.js'
-import { defaultState, sanitizeState, todayStr, APP_INFO, trashList } from '../lib/model.js'
+import { defaultState, sanitizeState, todayStr, APP_INFO, trashList, bumpWebMilestone } from '../lib/model.js'
 import { syncAchievements, totalXp } from '../lib/achievements.js'
 import { searchAll } from '../lib/search.js'
 import * as ops from '../lib/ops.js'
@@ -152,7 +152,13 @@ export const useAppStore = defineStore('app', () => {
     addBiLink: wrap(ops.addBiLink),
     deleteBiLink: wrap(ops.deleteBiLink),
     // v2.1.0：看板布局保存
-    saveDashboardLayout: wrap(ops.saveDashboardLayout)
+    saveDashboardLayout: wrap(ops.saveDashboardLayout),
+    // v2.1.0：Web 专属成就里程碑计数（AI 对话 / 工具调用 / 导入 / 拖拽 / 剪贴板 / 周期报告）
+    bumpMilestone(key) {
+      const changed = bumpWebMilestone(data, key, 1)
+      if (changed) { syncAchievements(data); recomputeXp(); persist() }
+      return changed
+    }
   }
 
   function setTheme(t) {

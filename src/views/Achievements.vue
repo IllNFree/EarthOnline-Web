@@ -13,6 +13,8 @@ const tab = ref('all')
 
 // 分类（视图层派生，不动契约文件）：按图标与 key 前缀归类
 function catOf(a) {
+  // v2.1.0：Web 专属成就（白板 / 双链 / 看板 / AI / 导入 / 拖拽 / 剪贴板 / 周期报告）
+  if (a.key.startsWith('web_')) return 'web'
   if (a.key.startsWith('egg') || a.key === 'walmart_egg') return 'egg'
   if (a.icon === 'flag') return 'task'
   if (a.icon === 'note') return 'memo'
@@ -23,6 +25,7 @@ function catOf(a) {
 }
 const CATS = [
   { key: 'all', label: '全部' },
+  { key: 'web', label: 'Web 专属' },
   { key: 'task', label: '任务' },
   { key: 'memo', label: '笔记' },
   { key: 'pack', label: '背包' },

@@ -10,7 +10,7 @@ import Icon from '../components/Icon.vue'
         <span class="avatar" style="background:var(--eo-chip);color:var(--eo-primary-deep)"><Icon name="shield" :size="22" /></span>
         <div style="font-weight:800;font-size:17px">隐私政策</div>
       </div>
-      <div class="muted" style="font-size:12px;margin-top:4px">更新于 2026-10-25 · 适用版本 v2.0.0（Web 端）</div>
+      <div class="muted" style="font-size:12px;margin-top:4px">更新于 2026-10-28 · 适用版本 v2.1.0（Web 端）</div>
     </div>
 
     <div class="glass card">
@@ -29,7 +29,19 @@ import Icon from '../components/Icon.vue'
     </div>
 
     <div class="glass card">
-      <div style="font-weight:700;margin-bottom:6px">二、第三方服务与数据处理规范</div>
+      <div style="font-weight:700;margin-bottom:6px">二、桌面级交互的数据行为（v2.1.0 新增）</div>
+      <div style="font-size:14px;line-height:1.8;margin-bottom:8px">Web 端 v2.1.0 引入桌面级生产力交互。以下能力<b>全部在本机运行</b>，仅在你主动触发时才会读取或写出本机数据。</div>
+      <ul class="plist">
+        <li><b>自定义右键菜单</b>：仅在页面内拦截右键并渲染菜单项，用于新建任务 / 笔记 / 记账等快捷动作。在「设置 → 桌面与交互」中<b>关闭该开关后，浏览器原生右键菜单会原样放行</b>，应用不再拦截任何右键事件。</li>
+        <li><b>全局拖拽上传</b>：拖入的文件由浏览器读取为本地 Blob / DataURL，<b>仅保存在本机</b>（图片入相册、文档入收藏）。应用不会把拖入内容上传到任何服务器，除非你同时启用了 WebDAV 同步并手动触发推送。</li>
+        <li><b>剪贴板智能监听</b>：切回页面时浏览器会请求读取剪贴板内容（需你在弹出的权限提示中授权）。读取到的文本 / 图片 / 链接仅用于在右下角提示"是否孵化"，<b>不会自动写入</b>，需你点击确认后才生成本机笔记 / 相册 / 收藏。此开关同样可在设置中关闭。</li>
+        <li><b>系统通知</b>：应用使用浏览器 Web Notifications API 在后台提示任务到期。通知内容由你的本地任务数据生成，<b>不经过任何服务器</b>；你需要在浏览器中授予通知权限，拒绝后该功能静默停用。</li>
+        <li><b>静态网页导出</b>：导出的 HTML 文件完全由本机 DOM 序列化生成，包含你选择导出的数据快照。该文件一旦保存到本地或分享给他人，<b>其内容脱离本应用的隐私控制</b>，请自行确认分享范围。</li>
+      </ul>
+    </div>
+
+    <div class="glass card">
+      <div style="font-weight:700;margin-bottom:6px">三、第三方服务与数据处理规范</div>
       <div style="font-size:14px;line-height:1.8;margin-bottom:8px">下列第三方服务仅在你<b>主动触发</b>相应功能时才会被调用。我们不会把你的生活数据、身份信息或凭据出售、共享给它们，也不会在后台静默调用。</div>
       <ul class="plist">
         <li><b>高德地图 API（AMap）</b>：用于「足迹」页的地图渲染与地点搜索。调用时浏览器会向高德服务发起请求，携带你的<b>公网 IP</b>与<b>你主动输入的搜索关键词</b>；地图 SDK 会在本机产生会话标识（如 sessionId、定位相关标识）用于地图交互。足迹坐标本身（名称、日期、经纬度）<b>仅保存在本机</b>，不会提交给高德。地图 Key 由你在设置中自行配置，我们不代为托管。</li>
@@ -41,7 +53,7 @@ import Icon from '../components/Icon.vue'
     </div>
 
     <div class="glass card">
-      <div style="font-weight:700;margin-bottom:6px">三、你的控制权</div>
+      <div style="font-weight:700;margin-bottom:6px">四、你的控制权</div>
       <ul class="plist">
         <li>所有第三方功能均可<b>随时不填凭据、不启用</b>；不配置即完全离线可用。</li>
         <li>凭据（AI Key、Steam Key、WebDAV 密码）保存在本机，可随时在设置中清空。</li>
@@ -51,22 +63,23 @@ import Icon from '../components/Icon.vue'
     </div>
 
     <div class="glass card">
-      <div style="font-weight:700;margin-bottom:6px">四、我们不会做什么</div>
+      <div style="font-weight:700;margin-bottom:6px">五、我们不会做什么</div>
       <ul class="plist">
         <li>不上传、不收集、不出售你的任何个人生活数据。</li>
         <li>无第三方统计 SDK、无广告、无追踪器、无用户画像。</li>
         <li>不读取与本应用无关的本地文件、剪贴板历史或通讯录。</li>
         <li>不向任何第三方提供你的凭据用于其自有目的。</li>
+        <li>WebDAV 同步仅在你<b>主动触发</b>时发生（v2.1.0 起支持切后台自动推送，可随时在设置中关闭该行为）。</li>
       </ul>
     </div>
 
     <div class="glass card">
-      <div style="font-weight:700;margin-bottom:6px">五、未成年人</div>
+      <div style="font-weight:700;margin-bottom:6px">六、未成年人</div>
       <div style="font-size:14px;line-height:1.8">本应用不面向 13 周岁以下儿童设计，也不会主动收集个人信息。若你不满相关法定年龄，请在监护人陪同下使用。</div>
     </div>
 
     <div class="glass card">
-      <div style="font-weight:700;margin-bottom:6px">六、政策变更</div>
+      <div style="font-weight:700;margin-bottom:6px">七、政策变更</div>
       <div style="font-size:14px;line-height:1.8">本政策如有更新，会在「设置 → 关于 → 更新日志」中同步说明版本与日期。政策变更不会追溯影响已保存在本机的数据。</div>
     </div>
   </div>

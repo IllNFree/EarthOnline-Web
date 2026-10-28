@@ -2,8 +2,8 @@
 // 字段名严格对齐旧版 earth_data 存档，保证历史数据无缝加载。
 export const APP_INFO = {
   appName: '地球Online',
-  version: '2.0.0',
-  buildDate: '2026-10-25',
+  version: '2.1.0',
+  buildDate: '2026-10-28',
   channel: 'web'
 }
 export const STORAGE_KEY = 'earth_data'
@@ -189,7 +189,9 @@ export function defaultState() {
     enableCustomContextMenu: true,
     enableClipboardWatch: true,
     // v2.1.0：主页默认视图（仪表盘 / 画布），设置中心可配
-    homeDefaultView: 'dashboard'
+    homeDefaultView: 'dashboard',
+    // v2.1.0：Web 专属成就里程碑计数（白板 / 双链 / 看板 / AI / 导入 / 拖拽 / 剪贴板 / 周期报告）
+    webMilestones: sanitizeWebMilestones(null)
   }
 }
 
@@ -223,6 +225,21 @@ export function sanitizeLedger(raw) {
 // ---------- 更新日志（结构化，替代「本次更新/检查更新」） ----------
 // 版本号严格平滑递增：v1.0.0 → v1.0.6 → v1.0.7 … v1.0.9 → v1.1.0 … v1.9.0 → v2.0.0
 export const CHANGELOG = [
+  {
+    version: '2.1.0', date: '2026-10-28',
+    items: [
+      '主页升级为双视图：仪表盘 / 画布（白板）一键切换，默认展示仪表盘，默认视图可在「设置 → 桌面与主页」中配置并持久化',
+      '画布主页全实体节点化：任务 / 笔记 / 照片 / 物品 / 收藏 / 足迹 / 洞察均可作为便利贴，支持拖拽缩放、改色与语义连线',
+      '新增全局实体检索：命中实体后可「定位节点」或在画布中就地创建节点',
+      '数据中心融合：新增【周期报告】模块，统合日报 / 周报 / 月报 / 年报，可由 AI 统一生成并展示；看板支持拖拽缩放与布局持久化',
+      'Steam 游戏库重构为小黑盒风格：封面毛玻璃卡片展示总时长、近两周时长与成就进度，点击可展开成就列表与上次运行时间',
+      '修复全局右键菜单不生效的问题：补齐全局 contextmenu 拦截，开关关闭时原样放行浏览器原生菜单',
+      '光标聚光灯按主题重调：浅色模式提亮增强对比，深色模式减弱暖光避免刺眼（通过 --spotlight-* 变量统一控制）',
+      '快捷添加按钮（FAB）双端自适应：PC 宽屏与横屏隐藏，移动端 / 竖屏窄屏显示，触控可达性优先',
+      '成就系统同步 v2.1.0：新增 11 项 Web 专属成就（画布 / 双链 / 看板 / AI / 导入 / 拖拽 / 剪贴板 / 周期报告）',
+      '隐私政策新增「桌面级交互的数据行为」章节，如实说明右键菜单、拖拽上传、剪贴板监听、系统通知与静态导出的数据流向'
+    ]
+  },
   {
     version: '2.0.0', date: '2026-10-25',
     items: [
@@ -432,6 +449,30 @@ export function getLifeStats(birth) {
 
 // ---------- 彩蛋计数器 ----------
 export const EGG_COUNTERS = ['blankTitleTries', 'throwbackViewed', 'albumViewed']
+
+// v2.1.0：Web 专属成就里程碑计数（Web 独有能力，iOS / Windows / Android 不具备）
+export const WEB_MILESTONES = [
+  'aiChat', 'toolCall', 'dataImport', 'dragUpload', 'clipboardCatch', 'periodReport'
+]
+
+export function sanitizeWebMilestones(raw) {
+  const out = {}
+  WEB_MILESTONES.forEach((k) => {
+    const v = raw && typeof raw === 'object' ? Number(raw[k]) : 0
+    out[k] = isFinite(v) && v >= 0 ? Math.min(Math.floor(v), 999999) : 0
+  })
+  return out
+}
+
+// 累加里程碑计数（用于触发 Web 专属成就），返回是否发生变化
+export function bumpWebMilestone(state, key, delta) {
+  if (!state || !WEB_MILESTONES.includes(key)) return false
+  if (!state.webMilestones) state.webMilestones = sanitizeWebMilestones(null)
+  const d = delta && isFinite(delta) && delta > 0 ? Math.floor(delta) : 1
+  const before = state.webMilestones[key] || 0
+  state.webMilestones[key] = Math.min(before + d, 999999)
+  return state.webMilestones[key] !== before
+}
 export function sanitizeEggs(raw) {
   const out = { blankTitleTries: 0, throwbackViewed: 0, albumViewed: 0 }
   if (raw && typeof raw === 'object') {
@@ -597,7 +638,8 @@ export function sanitizeState(raw) {
     biLinks: arrOf(raw.biLinks).filter((b) => b && typeof b === 'object' && b.id).map(sanitizeBiLink),
     enableCustomContextMenu: raw.enableCustomContextMenu === false ? false : true,
     enableClipboardWatch: raw.enableClipboardWatch === false ? false : true,
-    homeDefaultView: raw.homeDefaultView === 'canvas' ? 'canvas' : 'dashboard'
+    homeDefaultView: raw.homeDefaultView === 'canvas' ? 'canvas' : 'dashboard',
+    webMilestones: sanitizeWebMilestones(raw.webMilestones)
   }
   // 旧模型 trash[] → 新模型 deletedAt（记录搬回各自集合，回收站内容不丢）
   migrateTrashToDeletedAt(s)
