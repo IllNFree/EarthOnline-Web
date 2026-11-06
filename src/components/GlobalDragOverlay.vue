@@ -24,7 +24,7 @@ const { state } = useGlobalDropZone()
 .drop-overlay {
   position: fixed; inset: 0; z-index: 92;
   display: flex; align-items: center; justify-content: center;
-  background: rgba(28, 22, 16, .34);
+  background: rgba(28, 28, 27, .34);
   backdrop-filter: blur(8px) saturate(140%);
   -webkit-backdrop-filter: blur(8px) saturate(140%);
 }

@@ -42,5 +42,5 @@ function onDrop(e) {
   transition: border-color .2s ease, background .2s ease, color .2s ease, transform .2s ease;
 }
 .up:hover, .up.over { border-color: var(--eo-primary); color: var(--eo-primary-deep); background: var(--eo-chip); transform: translateY(-1px); }
-.up.over { box-shadow: 0 0 0 3px rgba(232, 132, 60, .14); }
+.up.over { box-shadow: 0 0 0 3px rgba(44, 44, 44, .14); }
 </style>

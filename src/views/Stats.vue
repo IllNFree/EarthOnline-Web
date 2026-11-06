@@ -1,21 +1,20 @@
 <script setup>
-// ===== 数据中心（模块二）：等级概览 + 六宫格 + 周期报告（日报/周报/月报/年报） + 自定义看板 =====
+// ===== 数据中心（模块二）：六宫格 + 周期报告（日报/周报/月报/年报） + 自定义看板 =====
 // 说明：
 //   · 「周期报告」四档由 AI 统一生成并展示（AI 不可用时回落到本地聚合数据，保证功能不中断）
 //   · 「自定义看板」为 grid-layout-plus 拖拽/缩放看板，布局持久化并纳入 WebDAV 同步契约
 //   · 满血 Haze：不使用纯色降级
 import { ref, computed } from 'vue'
 import { useAppStore } from '../stores/app.js'
-import { todayStr, xpLevelInfo } from '../lib/model.js'
+import { todayStr } from '../lib/model.js'
 import { chat } from '../lib/ai.js'
 import Icon from '../components/Icon.vue'
-import DashboardBoard from '../components/DashboardBoard.vue'
+import PageHeader from '../components/PageHeader.vue'
 import ReportRenderer from '../components/ReportRenderer.vue'
 
 const store = useAppStore()
 const p2 = (n) => String(n).padStart(2, '0')
 const today = todayStr()
-const level = computed(() => xpLevelInfo(store.xp))
 
 const overview = computed(() => ([
   { icon: 'tasks', label: '任务', value: store.live.tasks.length, sub: store.live.tasks.filter((t) => t.status === 'done').length + ' 已完成' },
@@ -23,7 +22,7 @@ const overview = computed(() => ([
   { icon: 'backpack', label: '物品/收藏', value: store.live.items.length + store.live.collections.length, sub: store.live.collections.length + ' 项收藏' },
   { icon: 'image', label: '照片', value: store.live.photos.length, sub: '张回忆' },
   { icon: 'map-pin', label: '足迹', value: store.live.locations.length, sub: '个地点' },
-  { icon: 'trophy', label: '成就', value: store.data.achievements.length, sub: store.xp + ' XP' }
+  { icon: 'trophy', label: '成就', value: store.data.achievements.length, sub: '项已解锁' }
 ]))
 
 // ================= 周期报告：日报 / 周报 / 月报 / 年报 =================
@@ -51,15 +50,14 @@ function rangeFor(key) {
   return { from: y + '-01-01', to: y + '-12-31' }
 }
 function aggregate(from, to) {
-  const a = { tasksDone: 0, memos: 0, photos: 0, locations: 0, ledRecords: 0, income: 0, expense: 0, xp: 0 }
-  store.live.tasks.forEach((t) => { if (t.status === 'done' && inRange((t.doneAt || '').slice(0, 10), from, to)) { a.tasksDone++; a.xp += 10 } })
-  store.live.memos.forEach((m) => { if (inRange(m.createdAt, from, to)) { a.memos++; a.xp += 5 } })
-  store.live.photos.forEach((p) => { if (inRange(p.createdAt, from, to)) { a.photos++; a.xp += 8 } })
-  store.live.locations.forEach((l) => { if (inRange(l.date, from, to)) { a.locations++; a.xp += 8 } })
+  const a = { tasksDone: 0, memos: 0, photos: 0, locations: 0, ledRecords: 0, income: 0, expense: 0 }
+  store.live.tasks.forEach((t) => { if (t.status === 'done' && inRange((t.doneAt || '').slice(0, 10), from, to)) a.tasksDone++ })
+  store.live.memos.forEach((m) => { if (inRange(m.createdAt, from, to)) a.memos++ })
+  store.live.photos.forEach((p) => { if (inRange(p.createdAt, from, to)) a.photos++ })
+  store.live.locations.forEach((l) => { if (inRange(l.date, from, to)) a.locations++ })
   store.data.ledger.records.forEach((r) => {
     if (!inRange(r.date, from, to)) return
     a.ledRecords++
-    a.xp += 2
     if (r.type === 'income') a.income += r.amount; else a.expense += r.amount
   })
   a.balance = a.income - a.expense
@@ -161,7 +159,7 @@ async function generateReport() {
 只回一行严格 JSON，不要解释、不要 Markdown 代码块。
 格式：{"summary":"一句话总结","letter":"给用户的一段话，40-120字，语气温暖像朋友"}。`
   const user = `统计区间：${r.rangeLabel}
-完成任务 ${r.agg.tasksDone} 个；新增笔记 ${r.agg.memos} 篇；照片 ${r.agg.photos} 张；足迹 ${r.agg.locations} 处；记账 ${r.agg.ledRecords} 笔；收入 ${r.agg.income.toFixed(0)} 元 / 支出 ${r.agg.expense.toFixed(0)} 元；获得 ${r.agg.xp} XP。
+完成任务 ${r.agg.tasksDone} 个；新增笔记 ${r.agg.memos} 篇；照片 ${r.agg.photos} 张；足迹 ${r.agg.locations} 处；记账 ${r.agg.ledRecords} 笔；收入 ${r.agg.income.toFixed(0)} 元 / 支出 ${r.agg.expense.toFixed(0)} 元。
 活跃度序列（标签:次数）：${trendPts.map((p) => p.date + ':' + p.value).join('、')}。`
   const res = await chat(store.data.aiConfig, [
     { role: 'system', content: sys },
@@ -193,26 +191,15 @@ function clearAi() { aiReport.value = null; aiError.value = '' }
 
 <template>
   <div class="page wide">
-    <!-- 等级概览 -->
-    <div class="glass card">
-      <div class="row between">
-        <div>
-          <div style="font-size:22px;font-weight:800">Lv.{{ level.level }} · {{ level.stage.label }}</div>
-          <div class="muted" style="font-size:13px">{{ store.xp }} XP{{ level.isMax ? ' · 已满级' : ' · 距下一级 ' + (level.nextMin - store.xp) + ' XP' }}</div>
-        </div>
-        <div class="avatar" style="width:52px;height:52px"><Icon :name="level.stage.icon" :size="26" /></div>
-      </div>
-      <div class="bar" style="margin-top:10px"><i :style="{ width: level.pct + '%' }"></i></div>
-    </div>
-
+    <PageHeader title="数据中心" subtitle="今天 · 这周 · 这一年的生活切片" />
     <!-- 六宫格概览 -->
     <div class="grid3">
-      <div v-for="o in overview" :key="o.label" class="glass card" style="margin:0;padding:14px">
+      <div v-for="o in overview" :key="o.label" class="glass card stat-card" style="margin:0;padding:14px">
         <div class="row" style="gap:8px">
           <span class="avatar" style="width:34px;height:34px;background:var(--eo-chip);color:var(--eo-primary-deep)"><Icon :name="o.icon" :size="18" /></span>
           <span class="muted" style="font-size:12px">{{ o.label }}</span>
         </div>
-        <div style="font-size:22px;font-weight:800;margin-top:6px">{{ o.value }}</div>
+        <div class="stat-num">{{ o.value }}</div>
         <div class="muted" style="font-size:11px">{{ o.sub }}</div>
       </div>
     </div>
@@ -243,16 +230,11 @@ function clearAi() { aiReport.value = null; aiError.value = '' }
         <div class="pr-tile"><b>{{ report.agg.memos }}</b><span>新增灵感</span><i>+5/条</i></div>
         <div class="pr-tile"><b>{{ report.agg.photos + report.agg.locations }}</b><span>影像足迹</span><i>+8/处</i></div>
         <div class="pr-tile">
-          <b :style="'color:' + (report.agg.balance >= 0 ? 'var(--eo-good)' : 'var(--eo-bad)')">{{ report.agg.balance.toFixed(0) }}</b>
+          <b :style="'color:' + (report.agg.balance >= 0 ? '#7E9A7E' : '#A97C72')">{{ report.agg.balance.toFixed(0) }}</b>
           <span>收支结余</span>
           <i>+{{ report.agg.income.toFixed(0) }} / -{{ report.agg.expense.toFixed(0) }}</i>
         </div>
       </div>
-      <div class="row between" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--eo-glass-border);font-size:13px">
-        <span class="muted">获得经验值</span>
-        <b style="color:var(--eo-primary-deep)">+{{ report.agg.xp }} XP</b>
-      </div>
-
       <!-- 活跃度分布 -->
       <div style="font-weight:700;margin-top:14px">{{ report.title }}</div>
       <div class="chart-row">
@@ -279,9 +261,7 @@ function clearAi() { aiReport.value = null; aiError.value = '' }
     <!-- AI 生成的报告（满血 Haze，ReportRenderer 全局组件） -->
     <ReportRenderer v-if="aiReport" :report="aiReport" style="margin-top:14px" />
 
-    <!-- 自定义看板（grid-layout-plus 拖拽 / 缩放 / 布局持久化） -->
-    <div class="section-title">看板</div>
-    <DashboardBoard />
+    <!-- 看板已迁移至主页画布（v2.1.0 模块二），数据中心只保留六宫格 / 周期报告 -->
   </div>
 </template>
 
@@ -302,12 +282,21 @@ function clearAi() { aiReport.value = null; aiError.value = '' }
   display: flex; gap: 10px; align-items: flex-start; margin-top: 14px;
   padding: 12px 14px; border-radius: 14px; background: var(--eo-chip);
 }
-.pr-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--eo-good); flex: none; margin-top: 4px; }
+.pr-dot { width: 12px; height: 12px; border-radius: 50%; background: #7E9A7E; flex: none; margin-top: 4px; }
 .pr-err {
   display: flex; align-items: center; gap: 6px; margin-top: 10px;
   padding: 9px 12px; border-radius: 12px; font-size: 12px;
-  color: var(--eo-bad); background: rgba(196, 99, 76, .1);
-  border: 1px solid rgba(196, 99, 76, .25);
+  color: #A97C72; background: rgba(169, 124, 114, .1);
+  border: 1px solid rgba(169, 124, 114, .25);
+}
+
+.stat-num { font-size: 22px; font-weight: 800; margin-top: 6px; letter-spacing: -0.01em; }
+@media (max-width: 420px) {
+  /* 六宫格在窄屏保持双列，避免每条只放一个数字造成大面积浪费 */
+  .grid3 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 8px; }
+  .stat-card { padding: 11px 10px !important; }
+  .stat-card .avatar { width: 28px !important; height: 28px !important; }
+  .stat-num { font-size: 18px; margin-top: 4px; }
 }
 
 .chart-row { display: flex; align-items: flex-end; gap: 6px; margin-top: 10px; overflow-x: auto; }

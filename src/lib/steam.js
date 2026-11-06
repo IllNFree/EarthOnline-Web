@@ -9,13 +9,24 @@
 export const BUILTIN_PROXY = '/steam-api/'
 
 // 模块三：封面图（Steam 官方 CDN，无需鉴权）
-//   · header.jpg   460×215 横版（用作 Haze 毛玻璃背景）
-//   · library_600x900.jpg 竖版封面
+//   · header.jpg   460×215 横版（旧版，低清，仅作 404 兜底）
+//   · library_600x900_2x.jpg 1200×1800 竖版高清（默认采用，参考小黑盒 / 官方库视图）
 export function steamCover(appid, kind) {
   const id = String(appid || '')
   if (!id) return ''
-  if (kind === 'portrait') return 'https://cdn.cloudflare.steamstatic.com/steam/apps/' + id + '/library_600x900.jpg'
+  if (kind === 'portrait') return steamCoverHD(appid)
   return 'https://cdn.cloudflare.steamstatic.com/steam/apps/' + id + '/header.jpg'
+}
+// 高清竖版封面（满血 Haze 卡片主图）：优先 fastly，404 时回退 akamai，再回退 header（红线 3）。
+export function steamCoverHD(appid) {
+  const id = String(appid || '')
+  if (!id) return ''
+  return 'https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/' + id + '/library_600x900_2x.jpg'
+}
+export function steamCoverHDAlt(appid) {
+  const id = String(appid || '')
+  if (!id) return ''
+  return 'https://steamcdn-a.akamaihd.net/steam/apps/' + id + '/library_600x900_2x.jpg'
 }
 
 function buildUrl(cfg, apiPath, query) {
@@ -81,7 +92,7 @@ export async function fetchSteamGames(cfg, opts) {
         ? 'https://media.steampowered.com/steamcommunity/public/images/apps/' + g.appid + '/' + g.img_logo_url + '.jpg'
         : '',
       coverUrl: steamCover(g.appid, 'header'),
-      portraitUrl: steamCover(g.appid, 'portrait'),
+      portraitUrl: steamCoverHD(g.appid),
       // 近两周时长（分钟 → 小时）与上次运行时间，由 GetRecentPlayedGames 补齐
       recentHours: 0,
       lastPlayedTime: 0
@@ -134,5 +145,50 @@ export async function fetchGameAchievements(cfg, appid, opts) {
     achievements: list,
     unlocked: list.filter((a) => a.unlocked).length,
     total: list.length
+  }
+}
+
+// 个人基础档案：GetPlayerSummaries（头像 / 昵称 / 自定义网址 / 建号时间）
+// + GetSteamLevel（社区等级）。账号年龄由 timecreated 推算。
+// 注意：Steam Web API 不返回「个人简介(bio)」与「展柜(showcases)」，
+// 这两项必须在 UI 里提供手动录入兜底（红线 3：API 隐私受限时优雅降级）。
+export async function fetchSteamProfile(cfg, opts) {
+  const key = (cfg.apiKey || '').trim()
+  const sid = (cfg.steamId || '').trim()
+  if (!key || !sid) return { ok: false, error: '请先填写 Steam API Key 与 Steam ID', profile: null }
+
+  const url = buildUrl(cfg, 'ISteamUser/GetPlayerSummaries/v2/', '')
+  const r = await getJSON(url, (opts && opts.timeout) || 20000)
+  if (!r.ok) return { ok: false, error: r.error, profile: null }
+  const p = (r.data && r.data.response && r.data.response.players && r.data.response.players[0]) || null
+  if (!p) return { ok: false, error: '未找到该 Steam ID 对应的玩家资料', profile: null }
+
+  // 社区等级：失败不影响档案主体展示（静默降级为 0 并提示）
+  let level = 0
+  try {
+    const lr = await getJSON(buildUrl(cfg, 'IPlayerService/GetSteamLevel/v1/', ''), (opts && opts.timeout) || 20000)
+    if (lr.ok) level = (lr.data && lr.data.response && lr.data.response.player_level) || 0
+  } catch (e) { /* 静默降级 */ }
+
+  const created = p.timecreated ? Number(p.timecreated) : 0
+  const nowS = Math.floor(Date.now() / 1000)
+  const ageYears = created ? Math.max(0, Math.floor((nowS - created) / 31557600)) : 0
+
+  return {
+    ok: true,
+    profile: {
+      steamId: p.steamid || sid,
+      personaName: p.personaname || '',
+      avatarFull: p.avatarfull || p.avatar || '',
+      avatarMedium: p.avatarmedium || p.avatar || '',
+      profileUrl: p.profileurl || '',
+      // GetPlayerSummaries/v2 不返回 bio；缺省空串，由手动录入兜底
+      bio: p.summary || '',
+      timecreated: created,
+      accountAgeYears: ageYears,
+      level,
+      personastate: p.personastate || 0,
+      lastlogoff: p.lastlogoff || 0
+    }
   }
 }

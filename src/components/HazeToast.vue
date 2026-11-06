@@ -40,7 +40,7 @@ const { state, accept, dismiss } = useClipboardWatcher()
 }
 .ht-btn {
   flex: none; padding: 8px 12px; border-radius: 999px; font-size: 12px; font-weight: 700; color: #fff;
-  background: linear-gradient(135deg, var(--eo-primary), var(--eo-primary-deep));
+  background: var(--eo-primary);
   box-shadow: 0 0 0 1px rgba(255, 255, 255, .18) inset, var(--eo-shadow-soft);
 }
 .ht-btn:active { transform: scale(.96); }

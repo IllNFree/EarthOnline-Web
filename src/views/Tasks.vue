@@ -4,9 +4,15 @@ import { useRoute } from 'vue-router'
 import { useAppStore } from '../stores/app.js'
 import { useDialogStore } from '../stores/dialog.js'
 import { TASK_CATEGORY, TASK_STATUS } from '../lib/model.js'
+import { BI_LINK_TYPES } from '../lib/bilink.js'
 import Icon from '../components/Icon.vue'
+import PageHeader from '../components/PageHeader.vue'
 import TaskNode from '../components/TaskNode.vue'
 import Modal from '../components/GlassBottomSheet.vue'
+import EntitySearchDialog from '../components/EntitySearchDialog.vue'
+import EntityRelationsPanel from '../components/EntityRelationsPanel.vue'
+import EmptyState from '../components/EmptyState.vue'
+import VirtualList from '../components/VirtualList.vue'
 
 const store = useAppStore()
 const dialog = useDialogStore()
@@ -25,6 +31,13 @@ const showAdd = ref(false)
 const batchMode = ref(false)
 const selected = ref(new Set())
 const kw = ref('')
+// 模块三：关联内容弹窗（双向绑定 + 画布语义连线）
+const relShow = ref(false)
+const relType = ref('task')
+const relId = ref(null)
+function openRel(type, id) { relType.value = type; relId.value = id; relShow.value = true }
+const relatedForEditor = computed(() => (editor.value.id ? store.relatedEntitiesFor('task', editor.value.id) : []))
+const relatedLedgerForEditor = computed(() => relatedForEditor.value.filter((r) => r.type === 'ledger'))
 function taskMatch(t) {
   const q = kw.value.trim().toLowerCase()
   if (!q) return true
@@ -116,23 +129,24 @@ function batchExport() {
 
 <template>
   <div class="page wide">
-    <div class="page-head" style="flex-wrap:wrap;gap:10px">
-      <div class="capsule" style="padding:4px;gap:4px">
-        <button class="btn ghost" :style="tab === 'daily' ? 'background:var(--eo-primary);color:#fff' : ''" @click="tab = 'daily'">日常</button>
-        <button class="btn ghost" :style="tab === 'todo' ? 'background:var(--eo-primary);color:#fff' : ''" @click="tab = 'todo'">Todo</button>
-      </div>
-      <div class="row" style="gap:8px;flex:1;flex-wrap:wrap;justify-content:flex-end">
-        <div class="search-bar" style="flex:1;min-width:120px;max-width:220px">
-          <Icon name="search" :size="16" />
-          <input v-model="kw" placeholder="搜索标题 / 标签…" />
+    <PageHeader title="任务" v-model:query="kw" placeholder="搜索标题 / 标签…"
+      :subtitle="`共 ${store.live.tasks.length} 条 · ${store.live.tasks.filter((t) => t.status !== 'done').length} 条待完成`">
+      <template #actions>
+        <button class="add-btn" @click="openEditor(null, null)"><Icon name="plus" :size="16" /> 新建</button>
+      </template>
+      <template #filters>
+        <div class="seg">
+          <button :class="{ 'is-on': tab === 'daily' }" @click="tab = 'daily'">日常</button>
+          <button :class="{ 'is-on': tab === 'todo' }" @click="tab = 'todo'">Todo</button>
         </div>
-        <button class="chip" :style="hideDone ? 'background:var(--eo-primary);color:#fff' : ''" @click="hideDone = !hideDone">
+        <button class="chip" :class="{ 'is-on': hideDone }" @click="hideDone = !hideDone">
           <Icon name="checklist" :size="14" /> 隐藏已完成
         </button>
+      </template>
+      <template #tools>
         <button class="chip" @click="batchMode = !batchMode"><Icon name="layers" :size="14" /> 批量</button>
-        <button class="add-btn" @click="openEditor(null, null)"><Icon name="plus" :size="16" /> 新建</button>
-      </div>
-    </div>
+      </template>
+    </PageHeader>
 
     <!-- 日常：主/支线合并，父子嵌套树 -->
     <div v-if="tab === 'daily'">
@@ -151,46 +165,34 @@ function batchExport() {
           </div>
         </div>
       </template>
-      <div v-if="!store.live.tasks.some((t) => t.category !== 'todo')" class="glass card empty-state">
-        <span class="empty-illu"><Icon name="sprout" :size="32" /></span>
-        <div class="es-title">还没有日常任务</div>
-        <div class="es-sub">从一个目标开始，人生游戏正式开局。</div>
+      <EmptyState v-if="!store.live.tasks.some((t) => t.category !== 'todo')" icon="sprout" title="还没有日常任务" subtitle="从一个目标开始，人生游戏正式开局。">
         <button class="btn" @click="openEditor(null, null)"><Icon name="plus" :size="16" /> 添加你的第一个任务</button>
-      </div>
+      </EmptyState>
     </div>
 
-    <!-- Todo：强制表格视图 -->
+    <!-- Todo：虚拟滚动长列表（模块一：仅渲染视口内行，行高固定） -->
     <div v-else>
-      <div class="glass card" style="padding:6px 4px">
-        <table style="width:100%;border-collapse:collapse;font-size:14px">
-          <thead>
-            <tr class="muted" style="font-size:12px;text-align:left">
-              <th style="padding:8px">标题</th><th style="padding:8px">截止</th><th style="padding:8px">状态</th><th style="padding:8px">操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="t in visibleTodo()" :key="t.id" style="border-top:1px solid var(--eo-glass-border)">
-              <td style="padding:10px">{{ t.title }}</td>
-              <td style="padding:10px" class="muted">{{ t.dueDate ? t.dueDate + (t.dueTime ? ' ' + t.dueTime : '') : '—' }}</td>
-              <td style="padding:10px"><span class="chip" :class="t.status">{{ statusLabel(t.status) }}</span></td>
-              <td style="padding:10px">
-                <div class="row" style="gap:4px">
-                  <button class="ghost-btn" title="编辑" @click="openEditor(t, null)"><Icon name="edit" :size="16" /></button>
-                  <button class="ghost-btn" title="删除" @click="removeTodo(t.id)"><Icon name="trash" :size="16" /></button>
-                </div>
-              </td>
-            </tr>
-            <tr v-if="!todoTasks.length"><td colspan="4" style="padding:8px">
-              <div class="glass card empty-state" style="margin:0">
-                <span class="empty-illu"><Icon name="checklist" :size="32" /></span>
-                <div class="es-title">还没有 Todo</div>
-                <div class="es-sub">轻松搞定琐碎小事，把脑子里的杂事都倒出来吧。</div>
-                <button class="btn" @click="openEditor(null, null)"><Icon name="plus" :size="16" /> 新建 Todo</button>
-              </div>
-            </td></tr>
-          </tbody>
-        </table>
+      <div v-if="visibleTodo().length">
+        <div class="glass card todo-head">
+          <span>标题</span><span>截止</span><span>状态</span><span>操作</span>
+        </div>
+        <VirtualList :items="visibleTodo()" :item-height="56" :gap="8" :height="560">
+          <template #default="{ item: t }">
+            <div class="glass card todo-row">
+              <span class="todo-title">{{ t.title }}</span>
+              <span class="muted">{{ t.dueDate ? t.dueDate + (t.dueTime ? ' ' + t.dueTime : '') : '—' }}</span>
+              <span><span class="chip" :class="t.status">{{ statusLabel(t.status) }}</span></span>
+              <span class="row" style="gap:4px">
+                <button class="ghost-btn" title="编辑" @click="openEditor(t, null)"><Icon name="edit" :size="16" /></button>
+                <button class="ghost-btn" title="删除" @click="removeTodo(t.id)"><Icon name="trash" :size="16" /></button>
+              </span>
+            </div>
+          </template>
+        </VirtualList>
       </div>
+      <EmptyState v-else icon="checklist" title="还没有 Todo" subtitle="轻松搞定琐碎小事，把脑子里的杂事都倒出来吧。">
+        <button class="btn" @click="openEditor(null, null)"><Icon name="plus" :size="16" /> 新建 Todo</button>
+      </EmptyState>
     </div>
 
     <div v-if="batchMode" class="row" style="gap:8px;margin-top:14px">
@@ -219,14 +221,44 @@ function batchExport() {
       <div class="field"><label>标签（空格或逗号分隔）</label>
         <input v-model="editor.tags" placeholder="如：工作 重要" />
       </div>
-      <div class="field" v-if="editor.category === 'todo'"><label>截止日期与时间</label>
+      <div class="field"><label>截止日期与时间（可选）</label>
         <input type="datetime-local" v-model="dueLocal" />
+      </div>
+      <!-- 模块三：关联内容（双向绑定 + 画布语义连线） -->
+      <div v-if="editor.id" class="rel-block">
+        <div class="rel-block-head">
+          <span>关联内容（{{ relatedForEditor.length }}）</span>
+          <button class="chip" @click="openRel('task', editor.id)"><Icon name="link" :size="14" /> 管理关联</button>
+        </div>
+        <div v-if="relatedLedgerForEditor.length" class="rel-ledger">
+          <span class="muted" style="font-size:12px">关联账目</span>
+          <div class="rel-ledger-row" v-for="r in relatedLedgerForEditor" :key="r.type + r.id">
+            <Icon name="wallet" :size="14" /> <span>{{ r.title }}</span>
+          </div>
+        </div>
+        <EntityRelationsPanel type="task" :id="editor.id" />
+        <div v-if="!relatedForEditor.length" class="muted" style="font-size:12px">尚未关联任何实体，点击「管理关联」建立双向关联。</div>
       </div>
       <button class="btn" style="width:100%" @click="saveEditor"><Icon name="checklist" :size="16" /> {{ editor.id ? '保存修改' : '创建' }}</button>
     </Modal>
+
+    <EntitySearchDialog :source-type="relType" :source-id="relId" :show="relShow" @close="relShow = false" />
   </div>
 </template>
 
 <style scoped>
 .ghost-btn { color: var(--eo-ink-soft); padding: 6px; }
+.rel-block { border-top: 1px dashed var(--eo-glass-border); margin-top: 12px; padding-top: 12px; }
+.rel-block-head { display: flex; align-items: center; justify-content: space-between; font-weight: 700; font-size: 13px; margin-bottom: 8px; }
+.rel-ledger { background: rgba(44, 44, 44, .10); border: 1px solid var(--eo-glass-border); border-radius: 10px; padding: 8px 10px; margin-bottom: 8px; }
+.rel-ledger-row { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--eo-ink); margin-top: 4px; }
+.rel-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.rel-chip { display: inline-flex; align-items: center; gap: 5px; padding: 5px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--eo-chip); color: var(--eo-ink); }
+.rel-chip.dir-in { background: rgba(44, 44, 44, .16); }
+.rel-dir { font-size: 10px; opacity: .7; }
+/* 模块一：Todo 虚拟滚动长列表布局 */
+.todo-head, .todo-row { display: grid; grid-template-columns: 1fr 130px 100px 90px; align-items: center; gap: 8px; padding: 10px 12px; }
+.todo-head { font-size: 12px; color: var(--eo-ink-soft); font-weight: 700; margin-top: 8px; }
+.todo-row { font-size: 14px; }
+.todo-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 </style>

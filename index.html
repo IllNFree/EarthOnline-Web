@@ -3,35 +3,44 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <meta name="theme-color" content="#D4A373" />
+  <meta name="theme-color" content="#FAF8F3" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="地球Online" />
-  <link rel="apple-touch-icon" href="./icons/icon-512.png" />
-  <link rel="icon" type="image/svg+xml" href="./icons/icon.svg" />
+  <!-- Favicon：纯线框地球（暖深灰描边 / 透明底）；v= 强制刷新，规避浏览器对图标的长缓存 -->
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png?v=4" />
+  <link rel="icon" type="image/svg+xml" href="./icons/icon.svg?v=4" />
+  <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon.png?v=4" />
   <title>地球Online</title>
+  <script>
+    // 本地预览（localhost / 127.0.0.1）不启用 Service Worker，并清理旧缓存，避免构建更新后仍加载旧资源
+    if (/^(localhost|127\.0\.0\.1)$/.test(location.hostname) && 'serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function (rs) { rs.forEach(function (r) { r.unregister() }) }).catch(function () {})
+      if (window.caches) { caches.keys().then(function (ks) { ks.forEach(function (k) { caches.delete(k) }) }).catch(function () {}) }
+    }
+  </script>
   <style>
-    /* 内联启动屏：消除首访白屏闪烁（Vue 挂载后由 App.vue 移除）。配色对齐 Android：纸白 + 暖琥珀 */
+    /* 内联启动屏：消除首访白屏闪烁（Vue 挂载后由 App.vue 移除）。配色对齐 macOS StarLight：微暖灰白 + 暖深灰 */
     #eo-splash {
       position: fixed; inset: 0; z-index: 999; display: flex; flex-direction: column;
       align-items: center; justify-content: center; gap: 14px;
-      background: linear-gradient(160deg, #F8F6F2 0%, #EFE7DB 100%);
-      color: #B08553; font-family: system-ui, -apple-system, sans-serif;
+      background: linear-gradient(160deg, #FEFCF8 0%, #F3F0EA 100%);
+      color: #2C2C2C; font-family: system-ui, -apple-system, sans-serif;
     }
-    #eo-splash .logo { width: 84px; height: 84px; border-radius: 24px; background: linear-gradient(135deg, #E3BE97, #B08553);
-      display: flex; align-items: center; justify-content: center; color: #fff; font-size: 40px; font-weight: 800;
-      box-shadow: 0 18px 40px -14px rgba(154, 124, 88, .55), inset 0 1px 0 rgba(255,255,255,.4);
+    #eo-splash .logo { width: 84px; height: 84px; border-radius: 22px; overflow: hidden;
+      display: block; background: url('./icons/icon.svg?v=4') center/contain no-repeat;
+      box-shadow: 0 18px 40px -18px rgba(44,44,44,.14);
       animation: eo-pulse 1.6s ease-in-out infinite; }
-    #eo-splash .name { font-size: 17px; font-weight: 700; letter-spacing: 2px; color: #1E1A16; }
-    #eo-splash .bar { width: 132px; height: 5px; border-radius: 99px; background: rgba(176,133,83,.18); overflow: hidden; }
-    #eo-splash .bar i { display: block; width: 40%; height: 100%; border-radius: 99px; background: #D4A373; animation: eo-slide 1.1s ease-in-out infinite; }
+    #eo-splash .name { font-size: 17px; font-weight: 700; letter-spacing: 2px; color: #2C2C2C; }
+    #eo-splash .bar { width: 132px; height: 5px; border-radius: 99px; background: rgba(44,44,44,.08); overflow: hidden; }
+    #eo-splash .bar i { display: block; width: 40%; height: 100%; border-radius: 99px; background: #2C2C2C; animation: eo-slide 1.1s ease-in-out infinite; }
     @keyframes eo-pulse { 0%,100% { transform: scale(1) } 50% { transform: scale(1.06) } }
     @keyframes eo-slide { 0% { margin-left: -40% } 100% { margin-left: 100% } }
   </style>
 </head>
 <body>
   <div id="eo-splash" aria-hidden="true">
-    <div class="logo">地</div>
+    <div class="logo" role="img" aria-label="地球Online"></div>
     <div class="name">地球Online</div>
     <div class="bar"><i></i></div>
   </div>

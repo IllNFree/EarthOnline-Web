@@ -48,14 +48,16 @@ export async function searchPlaces(query, city) {
   })
 }
 
-// 挂载地图到容器，返回 {map, onPick, onDblClick, setCenter, addMarker, clearMarkers, destroy}
+// 挂载地图到容器，返回 {map, onPick, onDblClick, setCenter, addMarker, clearMarkers,
+//   addFootprint, clearFootprints, setZoom, getZoom, onZoom, destroy}
 export async function mountMap(el, center) {
   const AMap = await loadAMap()
   const c = center && center.lat ? [center.lng, center.lat] : [116.397, 39.909]
   const map = new AMap.Map(el, { zoom: 12, center: c, viewMode: '2D' })
   let pickCb = null
   let dblCb = null
-  const markers = []
+  const markers = []   // 搜索 / 点选临时标记
+  const fpMarkers = [] // 足迹常驻标记（独立池，不被搜索清除）
   map.on('click', (e) => { if (pickCb) pickCb({ lng: e.lnglat.getLng(), lat: e.lnglat.getLat() }) })
   map.on('dblclick', (e) => { if (dblCb) dblCb({ lng: e.lnglat.getLng(), lat: e.lnglat.getLat() }) })
   return {
@@ -63,12 +65,30 @@ export async function mountMap(el, center) {
     onPick(cb) { pickCb = cb },
     onDblClick(cb) { dblCb = cb },
     setCenter(lng, lat, zoom) { map.setCenter([lng, lat]); if (zoom) map.setZoom(zoom) },
+    setZoom(z) { map.setZoom(z) },
+    getZoom() { return map.getZoom() },
+    onZoom(cb) { map.on('zoomend', () => { try { cb(map.getZoom()) } catch (e) {} }) },
     addMarker(lng, lat, name) {
       const m = new AMap.Marker({ position: [lng, lat], title: name || '' })
       map.add(m); markers.push(m)
       return m
     },
     clearMarkers() { markers.forEach((m) => map.remove(m)); markers.length = 0 },
+    // 足迹常驻标记：主题色圆点 + 名称标签，点击回调
+    addFootprint(lng, lat, name, onClick) {
+      const label = String(name || '足迹').replace(/[<>&"]/g, '')
+      const m = new AMap.Marker({
+        position: [lng, lat],
+        title: label,
+        anchor: 'bottom-center',
+        offset: [0, -6],
+        content: '<div class="fp-pin" title="' + label + '"><span class="fp-pin__dot"></span><span class="fp-pin__label">' + label + '</span></div>'
+      })
+      if (onClick) m.on('click', () => { try { onClick() } catch (e) {} })
+      map.add(m); fpMarkers.push(m)
+      return m
+    },
+    clearFootprints() { fpMarkers.forEach((m) => map.remove(m)); fpMarkers.length = 0 },
     destroy() { map.destroy() }
   }
 }

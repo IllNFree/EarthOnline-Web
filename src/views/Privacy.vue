@@ -10,7 +10,7 @@ import Icon from '../components/Icon.vue'
         <span class="avatar" style="background:var(--eo-chip);color:var(--eo-primary-deep)"><Icon name="shield" :size="22" /></span>
         <div style="font-weight:800;font-size:17px">隐私政策</div>
       </div>
-      <div class="muted" style="font-size:12px;margin-top:4px">更新于 2026-10-28 · 适用版本 v2.1.0（Web 端）</div>
+      <div class="muted" style="font-size:12px;margin-top:4px">更新于 2026-11-06 · 适用版本 v3.0.0（Web 端）</div>
     </div>
 
     <div class="glass card">
@@ -23,14 +23,15 @@ import Icon from '../components/Icon.vue'
       <ul class="plist">
         <li>所有记录（任务 / 笔记 / 相册 / 足迹 / 记账 / 成就等）保存在本机 <b>IndexedDB</b>，偏好设置（主题、壁纸、外观参数）保存在本机 <b>localStorage</b>。</li>
         <li>这些数据<b>不会</b>自动上传到任何服务器，也不会与你的身份信息关联。</li>
+        <li>画布与空间数据（节点、连线、绘画、卡片布局、空间层级）同样保存在本机 localStorage，<b>不会</b>随任何请求上传；插件代码与插件清单亦仅存于本机。</li>
         <li>清除浏览器站点数据 = 永久删除全部数据，请先在「设置 → 导出备份」做好备份。</li>
         <li>「回收站」中的删除项保留 30 天，到期自动清除；「清空全部数据」会立即抹除本机所有记录。</li>
       </ul>
     </div>
 
     <div class="glass card">
-      <div style="font-weight:700;margin-bottom:6px">二、桌面级交互的数据行为（v2.1.0 新增）</div>
-      <div style="font-size:14px;line-height:1.8;margin-bottom:8px">Web 端 v2.1.0 引入桌面级生产力交互。以下能力<b>全部在本机运行</b>，仅在你主动触发时才会读取或写出本机数据。</div>
+      <div style="font-weight:700;margin-bottom:6px">二、桌面级交互的数据行为</div>
+      <div style="font-size:14px;line-height:1.8;margin-bottom:8px">Web 端引入桌面级生产力交互。以下能力<b>全部在本机运行</b>，仅在你主动触发时才会读取或写出本机数据。</div>
       <ul class="plist">
         <li><b>自定义右键菜单</b>：仅在页面内拦截右键并渲染菜单项，用于新建任务 / 笔记 / 记账等快捷动作。在「设置 → 桌面与交互」中<b>关闭该开关后，浏览器原生右键菜单会原样放行</b>，应用不再拦截任何右键事件。</li>
         <li><b>全局拖拽上传</b>：拖入的文件由浏览器读取为本地 Blob / DataURL，<b>仅保存在本机</b>（图片入相册、文档入收藏）。应用不会把拖入内容上传到任何服务器，除非你同时启用了 WebDAV 同步并手动触发推送。</li>
@@ -41,19 +42,33 @@ import Icon from '../components/Icon.vue'
     </div>
 
     <div class="glass card">
-      <div style="font-weight:700;margin-bottom:6px">三、第三方服务与数据处理规范</div>
+      <div style="font-weight:700;margin-bottom:6px">三、插件沙箱隔离</div>
+      <div style="font-size:14px;line-height:1.8;margin-bottom:8px">「插件中心」允许你安装自定义插件。插件代码<b>永远不会与主程序共享同一个执行上下文</b>：它在受限沙箱中运行，只能通过显式授权的 API 与本应用交互。</div>
+      <ul class="plist">
+        <li><b>本地 JS 插件</b>：在 <b>Proxy 沙箱</b>中执行，沙箱显式屏蔽 <code>window</code>、<code>document</code>、<code>localStorage</code>、<code>sessionStorage</code>、<code>indexedDB</code> 等直写入口，插件<b>无法直接读写你的任何本地数据</b>。</li>
+        <li><b>插件可访问的数据</b>：仅限你在安装时逐项勾选授权的类别（如「读取任务列表」「写入笔记」），授权记录随插件清单<b>保存在本机</b>，可随时在插件中心收回。</li>
+        <li><b>URL 插件</b>：运行在 <code>iframe sandbox</code>（仅 <code>allow-scripts</code>）中，与主页面完全隔离，无法访问同源 DOM、Cookie 或本地存储，只能通过受限的桥接消息与本应用通信。</li>
+        <li><b>崩溃隔离</b>：插件抛出的异常或陷入死循环<b>不会导致主程序崩溃</b>，主程序数据与界面不受影响；你可以随时停用或卸载插件。</li>
+        <li><b>插件代码的存放</b>：本地插件的代码本体仅存于本机浏览器存储，<b>不会写入备份文件、不会随 WebDAV 同步上传</b>；同步的仅是插件的清单与授权元数据。</li>
+        <li><b>插件清单导出 / 导入</b>：导出 <code>eo-plugins.json</code> 时，<b>本地插件的代码会一并写入该文件</b>；请把它当作可能包含可执行代码的普通文件保管与分享。导入他人提供的清单，等同于<b>信任并将在沙箱中运行其中的代码</b>，请只导入来源可信的清单。</li>
+        <li><b>发现页示例插件</b>：插件中心内置的 4 个示例（数据看板 / 今日概览 / 星火 / 记账助手）由本应用提供，仅调用公开插件 API，不读取任何未经授权的数据；安装后可按普通插件随时停用或卸载。</li>
+      </ul>
+    </div>
+
+    <div class="glass card">
+      <div style="font-weight:700;margin-bottom:6px">四、第三方服务与数据处理规范</div>
       <div style="font-size:14px;line-height:1.8;margin-bottom:8px">下列第三方服务仅在你<b>主动触发</b>相应功能时才会被调用。我们不会把你的生活数据、身份信息或凭据出售、共享给它们，也不会在后台静默调用。</div>
       <ul class="plist">
         <li><b>高德地图 API（AMap）</b>：用于「足迹」页的地图渲染与地点搜索。调用时浏览器会向高德服务发起请求，携带你的<b>公网 IP</b>与<b>你主动输入的搜索关键词</b>；地图 SDK 会在本机产生会话标识（如 sessionId、定位相关标识）用于地图交互。足迹坐标本身（名称、日期、经纬度）<b>仅保存在本机</b>，不会提交给高德。地图 Key 由你在设置中自行配置，我们不代为托管。</li>
         <li><b>大模型 API（OpenAI 兼容接口）</b>：用于「AI 中枢」与主页速览的意图识别。请求时，<b>你输入的文本内容</b>会发送至你在「设置 → AI 对话」中填写的 Base URL；API Key 仅存于本机，仅作为鉴权头随请求发送，<b>不会写入导出文件、不会同步到 WebDAV、不会显示在界面上</b>。若你填写的是第三方服务商的地址，则该服务商的数据处理规则同时适用，请自行选择可信赖的服务方。</li>
         <li><b>Steam API（Valve）</b>：用于「Steam 游戏库」拉取游戏列表。仅在你填写 SteamID / API Key 并点击拉取时发起请求，携带你填写的 <b>SteamID 与 API Key</b>；返回的游戏库数据缓存在本机。Steam Key 不会随应用数据导出或同步。你也可以配置自建代理地址，此时数据流向由该代理决定。</li>
-        <li><b>WebDAV 服务器</b>：用于备份与跨端同步。请求会携带你在设置中填写的服务器地址与账号密码，以及你主动上传的完整数据备份。备份文件加密与否取决于你的服务器配置，地球Online 不会额外留存副本。</li>
+        <li><b>WebDAV 服务器（加密同步）</b>：用于备份与跨端同步。同步通道应使用 <b>HTTPS 加密传输</b>（地址以 <code>https://</code> 开头），传输中的备份内容由 TLS 加密保护；请务必为你自建的 WebDAV 服务器启用 HTTPS，并配合服务器端的存储加密（如 WebDAV 服务商的静态加密、磁盘加密或应用层密码保护）。请求会携带你在设置中填写的服务器地址与账号密码，以及你主动上传的完整数据备份；<b>账号与密码仅保存在本机 localStorage，不会写入导出文件、也不会被同步回本机</b>，地球Online 不会在你的服务器之外额外留存任何副本。</li>
         <li><b>静态资源与 PWA</b>：应用为纯静态站点，图标、脚本等资源从发布方托管地址加载，这是一次普通的网络请求，会暴露你的 IP 与浏览器信息给托管方（如同访问任何网站）。</li>
       </ul>
     </div>
 
     <div class="glass card">
-      <div style="font-weight:700;margin-bottom:6px">四、你的控制权</div>
+      <div style="font-weight:700;margin-bottom:6px">五、你的控制权</div>
       <ul class="plist">
         <li>所有第三方功能均可<b>随时不填凭据、不启用</b>；不配置即完全离线可用。</li>
         <li>凭据（AI Key、Steam Key、WebDAV 密码）保存在本机，可随时在设置中清空。</li>
@@ -63,24 +78,29 @@ import Icon from '../components/Icon.vue'
     </div>
 
     <div class="glass card">
-      <div style="font-weight:700;margin-bottom:6px">五、我们不会做什么</div>
+      <div style="font-weight:700;margin-bottom:6px">六、我们不会做什么</div>
       <ul class="plist">
         <li>不上传、不收集、不出售你的任何个人生活数据。</li>
         <li>无第三方统计 SDK、无广告、无追踪器、无用户画像。</li>
         <li>不读取与本应用无关的本地文件、剪贴板历史或通讯录。</li>
         <li>不向任何第三方提供你的凭据用于其自有目的。</li>
-        <li>WebDAV 同步仅在你<b>主动触发</b>时发生（v2.1.0 起支持切后台自动推送，可随时在设置中关闭该行为）。</li>
+        <li>WebDAV 同步仅在你<b>主动触发</b>时发生（支持切后台自动推送，可随时在设置中关闭该行为）。</li>
       </ul>
     </div>
 
     <div class="glass card">
-      <div style="font-weight:700;margin-bottom:6px">六、未成年人</div>
+      <div style="font-weight:700;margin-bottom:6px">七、未成年人</div>
       <div style="font-size:14px;line-height:1.8">本应用不面向 13 周岁以下儿童设计，也不会主动收集个人信息。若你不满相关法定年龄，请在监护人陪同下使用。</div>
     </div>
 
     <div class="glass card">
-      <div style="font-weight:700;margin-bottom:6px">七、政策变更</div>
+      <div style="font-weight:700;margin-bottom:6px">八、政策变更</div>
       <div style="font-size:14px;line-height:1.8">本政策如有更新，会在「设置 → 关于 → 更新日志」中同步说明版本与日期。政策变更不会追溯影响已保存在本机的数据。</div>
+    </div>
+
+    <div class="glass card">
+      <div style="font-weight:700;margin-bottom:6px">九、相关条款</div>
+      <div style="font-size:14px;line-height:1.8">使用本应用前，请同时阅读<button class="chip" style="margin:0 4px" @click="$router.push('/terms')">用户协议与免责声明</button>。该页面说明软件许可、数据保管责任、插件与第三方服务的使用边界及免责范围。</div>
     </div>
   </div>
 </template>
@@ -88,4 +108,10 @@ import Icon from '../components/Icon.vue'
 <style scoped>
 .plist { margin: 0; padding-left: 18px; font-size: 14px; line-height: 1.9; }
 .plist li { margin-bottom: 6px; }
+.plist code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px; padding: 1px 6px; border-radius: 7px;
+  background: var(--eo-chip); color: var(--eo-primary-deep);
+  border: 1px solid var(--eo-glass-border); white-space: nowrap;
+}
 </style>

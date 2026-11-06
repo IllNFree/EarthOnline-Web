@@ -1,0 +1,56 @@
+{
+  "$schema": "https://static.cloudbase.net/cli/cloudbaserc.schema.json",
+  "version": "2.1",
+  "envId": "{{env.ENV_ID}}",
+  "functionRoot": "./functions",
+  "functions": [
+    {
+      "name": "api",
+      "description": "EarthOnline 账号 / 同步 / OAuth 网关（HTTP 访问服务入口，Event 函数）",
+      "runtime": "Nodejs18.15",
+      "handler": "index.main",
+      "dir": "./functions/api",
+      "timeout": 30,
+      "memorySize": 256,
+      "installDependency": true,
+      "envVariables": {
+        "EO_MASTER_KEY": "<必填：请替换为 openssl rand -hex 32 或 node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\" 的输出；生产环境不配置会被开发密钥兜底>",
+        "EO_PUBLIC_BASE_URL": "",
+        "ALLOWED_ORIGIN": "",
+        "SMTP_HOST": "smtp.qq.com",
+        "SMTP_PORT": "465",
+        "SMTP_USER": "<你的发信邮箱>",
+        "SMTP_PASS": "<邮箱授权码，不要写进仓库>",
+        "SMTP_FROM": "地球Online <你的发信邮箱>",
+        "EO_MAIL_DEBUG": "0",
+        "EO_DEBUG": "0",
+        "GITHUB_CLIENT_ID": "",
+        "GITHUB_CLIENT_SECRET": ""
+      }
+    }
+  ],
+  "hosting": [
+    {
+      "name": "earthonline",
+      "root": "..",
+      "framework": "static",
+      "outputDir": "dist",
+      "deployPath": "/",
+      "entryFile": [
+        "index.html"
+      ],
+      "ignore": [
+        "**/*.map"
+      ]
+    }
+  ],
+  "gateway": {
+    "routes": [
+      {
+        "path": "/api",
+        "target": "function:api",
+        "enablePathTransmission": true
+      }
+    ]
+  }
+}

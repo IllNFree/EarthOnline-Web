@@ -34,15 +34,15 @@ export const EASING = {
 
 // 颜色语义（与 main.css 同步，便于 JS 侧动态计算）
 export const TOKENS = {
-  primary: '#D4A373',
-  primaryDeep: '#B08553',
-  primarySoft: '#E3BE97',
-  accent: '#C9A87C',
-  good: '#4E9668',
-  bad: '#C4634C',
+  primary: '#2C2C2C',
+  primaryDeep: '#2C2C2C',
+  primarySoft: '#8C8C8C',
+  accent: '#8C8C8C',
+  good: '#7E9A7E',
+  bad: '#A97C72',
   radius: 22,
   radiusSm: 14,
   // 收入/支出（记账图表对齐 Android）：收入绿 / 支出红
-  income: '#34C759',
-  expense: '#FF3B30'
+  income: '#7E9A7E',
+  expense: '#A97C72'
 }

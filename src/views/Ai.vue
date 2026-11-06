@@ -139,7 +139,7 @@ async function quick() {
         <button class="btn" @click="saveConfig"><Icon name="checklist" :size="16" /> 保存</button>
       </div>
       <div v-if="testRes" class="row" style="gap:6px;margin-top:8px;justify-content:center;color:var(--eo-ink-soft)">
-        <Icon :name="testRes.ok ? 'check' : 'x'" :size="16" :style="testRes.ok ? 'color:var(--eo-good)' : 'color:var(--eo-bad)'" />
+        <Icon :name="testRes.ok ? 'check' : 'x'" :size="16" :style="'color:var(--eo-ink)'" />
         <span>{{ testRes.ok ? '连接成功' : testRes.msg }}</span>
       </div>
     </Modal>

@@ -4,9 +4,15 @@ import { useRoute } from 'vue-router'
 import { useAppStore } from '../stores/app.js'
 import { useDialogStore } from '../stores/dialog.js'
 import Icon from '../components/Icon.vue'
+import PageHeader from '../components/PageHeader.vue'
 import GlassCard from '../components/GlassCard.vue'
 import GlassUploader from '../components/GlassUploader.vue'
 import Modal from '../components/GlassBottomSheet.vue'
+import EntitySearchDialog from '../components/EntitySearchDialog.vue'
+import EntityRelationsPanel from '../components/EntityRelationsPanel.vue'
+import EmptyState from '../components/EmptyState.vue'
+import { BI_LINK_TYPES } from '../lib/bilink.js'
+import { fetchLinkCover, faviconFor, coverFallback } from '../lib/cover.js'
 
 const store = useAppStore()
 const dialog = useDialogStore()
@@ -22,6 +28,45 @@ const form = ref({ name: '', count: 1, description: '', cover: '', tags: '', url
 const tagFilter = ref('')
 const kw = ref('')
 const coverBusy = ref(false)
+// 链接封面：失焦 / 粘贴后自动抓取，仅填空封面；失败回退 favicon，不阻塞保存
+const linkBusyTarget = ref(null)
+// 同一表单同一链接只发一次请求（粘贴后紧跟失焦时不重复抓取）
+const linkPending = new WeakMap()
+let linkSeq = 0
+
+async function autoCoverFromUrl(target, url) {
+  if (!target) return
+  const link = String(url || '').trim()
+  if (!/^https?:\/\//i.test(link)) return
+  if (String(target.cover || '').trim()) return
+  if (linkPending.get(target) === link) return
+  linkPending.set(target, link)
+  const seq = ++linkSeq
+  linkBusyTarget.value = target
+  let image = null
+  try {
+    image = await fetchLinkCover(link)
+  } finally {
+    if (linkPending.get(target) === link) linkPending.delete(target)
+  }
+  if (linkBusyTarget.value === target) linkBusyTarget.value = null
+  if (seq !== linkSeq) return
+  // 抓取期间用户可能已手动填写 / 上传封面，此时绝不覆盖
+  if (!String(target.cover || '').trim()) {
+    const fallback = faviconFor(link)
+    if (image) target.cover = image
+    else if (fallback) target.cover = fallback
+  }
+}
+function onUrlBlur(target) {
+  autoCoverFromUrl(target, target && target.url)
+}
+function onUrlPaste(target, e) {
+  const text = e && e.clipboardData ? e.clipboardData.getData('text') : ''
+  if (!/^https?:\/\//i.test(String(text || '').trim())) return
+  // v-model 在 paste 之后才写入，延后一拍再读取
+  setTimeout(() => autoCoverFromUrl(target, target && target.url), 0)
+}
 
 const items = computed(() => {
   let list = store.live.items
@@ -41,6 +86,12 @@ const collections = computed(() => {
 const showEdit = ref(false)
 const editKind = ref('item')
 const editData = ref(null)
+// 模块三：关联内容弹窗（双向绑定 + 画布语义连线）
+const relShow = ref(false)
+const relType = ref('item')
+const relId = ref(null)
+function openRel(type, id) { relType.value = type; relId.value = id; relShow.value = true }
+const relatedForEdit = computed(() => (editData.value && editData.value.id ? store.relatedEntitiesFor(editKind.value === 'item' ? 'item' : 'collection', editData.value.id) : []))
 function openEditItem(it) {
   editKind.value = 'item'
   editData.value = { id: it.id, name: it.name, count: it.count, description: it.description || '', cover: it.cover || '', tags: (it.tags || []).join(' ') }
@@ -179,33 +230,27 @@ async function del(kind, id) {
 
 <template>
   <div class="page wide">
-    <div class="page-head" style="flex-wrap:wrap;gap:10px">
-      <div class="search-bar" style="flex:1;min-width:140px;max-width:280px">
-        <Icon name="search" :size="16" />
-        <input v-model="kw" placeholder="搜索名称 / 标签…" />
-      </div>
-      <div class="row" style="gap:8px">
-        <button class="ghost-btn-soft" @click="$router.push('/steam')"><Icon name="gamepad" :size="16" /> Steam 游戏库</button>
+    <PageHeader title="背包" v-model:query="kw" placeholder="搜索名称 / 标签…"
+      :subtitle="`共 ${store.live.items.length} 件物品 · ${store.live.collections.length} 份收藏`">
+      <template #actions>
         <button class="add-btn" @click="showAdd = true"><Icon name="plus" :size="16" /> 添加{{ sub === 'item' ? '物品' : '收藏' }}</button>
-      </div>
-    </div>
-    <div class="row between" style="margin-bottom:12px">
-      <div class="capsule" style="padding:4px;gap:4px">
-        <button class="btn ghost" :style="sub === 'item' ? 'background:var(--eo-primary);color:#fff' : ''" @click="sub = 'item'">物品</button>
-        <button class="btn ghost" :style="sub === 'collection' ? 'background:var(--eo-primary);color:#fff' : ''" @click="sub = 'collection'">收藏</button>
-      </div>
-      <button class="chip" @click="view = view === 'grid' ? 'list' : 'grid'">
-        <Icon :name="view === 'grid' ? 'checklist' : 'grid'" :size="14" /> {{ view === 'grid' ? '列表' : '网格' }}
-      </button>
-    </div>
-
-    <!-- 标签过滤（「分类」已废弃，统一走标签） -->
-    <div v-if="allTags.length" class="row wrap" style="gap:8px;margin-bottom:12px">
-      <button class="chip" :style="!tagFilter ? '' : 'background:var(--eo-primary);color:#fff'" @click="tagFilter = ''">全部</button>
-      <button class="chip" v-for="t in allTags" :key="t" :style="tagFilter === t ? 'background:var(--eo-primary);color:#fff' : ''" @click="tagFilter = tagFilter === t ? '' : t">
-        <Icon name="tag" :size="12" /> {{ t }}
-      </button>
-    </div>
+      </template>
+      <template #filters>
+        <div class="seg">
+          <button :class="{ 'is-on': sub === 'item' }" @click="sub = 'item'">物品</button>
+          <button :class="{ 'is-on': sub === 'collection' }" @click="sub = 'collection'">收藏</button>
+        </div>
+        <button class="chip" :class="{ 'is-on': !tagFilter }" @click="tagFilter = ''">全部</button>
+        <button v-for="t in allTags" :key="t" class="chip" :class="{ 'is-on': tagFilter === t }" @click="tagFilter = tagFilter === t ? '' : t">
+          <Icon name="tag" :size="12" /> {{ t }}
+        </button>
+      </template>
+      <template #tools>
+        <button class="chip" @click="view = view === 'grid' ? 'list' : 'grid'">
+          <Icon :name="view === 'grid' ? 'checklist' : 'grid'" :size="14" /> {{ view === 'grid' ? '列表' : '网格' }}
+        </button>
+      </template>
+    </PageHeader>
 
     <!-- 物品（已取消类型字段） -->
     <template v-if="sub === 'item'">
@@ -230,12 +275,9 @@ async function del(kind, id) {
           </div>
         </GlassCard>
       </div>
-      <div v-if="!items.length" class="empty-state">
-        <span class="empty-illu"><Icon name="backpack" :size="32" /></span>
-        <div class="es-title">背包还空着</div>
-        <div class="es-sub">把值得收藏的物件都收进来吧</div>
-        <button class="btn" style="margin-top:6px" @click="showAdd = true"><Icon name="plus" :size="16" /> 添加你的第一件物品</button>
-      </div>
+      <EmptyState v-if="!items.length" icon="backpack" title="背包还空着" subtitle="把值得收藏的物件都收进来吧">
+        <button class="btn" @click="showAdd = true"><Icon name="plus" :size="16" /> 添加你的第一件物品</button>
+      </EmptyState>
     </template>
 
     <!-- 收藏（支持图片/音频/视频/PDF/文档文件与链接） -->
@@ -244,6 +286,7 @@ async function del(kind, id) {
         <GlassCard v-for="c in collections" :key="c.id" padding="10" glow @click="openEditCollection(c)">
           <div style="position:relative">
             <div v-if="c.cover" style="height:96px;border-radius:12px;background-size:cover;background-position:center" :style="{ backgroundImage: 'url(' + c.cover + ')' }"></div>
+            <div v-else-if="c.url" class="cover-fallback" :style="{ height: '96px', borderRadius: '12px', width: '100%', background: coverFallback(c.url).gradient }">{{ coverFallback(c.url).initial }}</div>
             <div v-else class="avatar" style="height:96px;border-radius:12px;width:100%;background:var(--eo-chip);color:var(--eo-primary-deep)">
               <Icon :name="c.fileMeta ? mimeIcon(c.fileMeta.mime) : 'star'" :size="30" />
             </div>
@@ -259,6 +302,7 @@ async function del(kind, id) {
         <GlassCard v-for="c in collections" :key="c.id" style="margin:0 0 10px" @click="openEditCollection(c)">
           <div class="row" style="gap:10px;width:100%">
             <div v-if="c.cover" style="width:46px;height:46px;border-radius:12px;background-size:cover;background-position:center" :style="{ backgroundImage: 'url(' + c.cover + ')' }"></div>
+            <span v-else-if="c.url" class="avatar cover-fallback" :style="{ background: coverFallback(c.url).gradient }">{{ coverFallback(c.url).initial }}</span>
             <span v-else class="avatar"><Icon :name="c.fileMeta ? mimeIcon(c.fileMeta.mime) : 'star'" :size="22" /></span>
             <div style="flex:1;min-width:0">
               <div style="font-weight:600">{{ c.title }}</div>
@@ -269,12 +313,9 @@ async function del(kind, id) {
           </div>
         </GlassCard>
       </div>
-      <div v-if="!collections.length" class="empty-state">
-        <span class="empty-illu"><Icon name="star" :size="32" /></span>
-        <div class="es-title">还没有收藏</div>
-        <div class="es-sub">链接、文件或灵感，都先收在这里</div>
-        <button class="btn" style="margin-top:6px" @click="showAdd = true"><Icon name="plus" :size="16" /> 添加你的第一份收藏</button>
-      </div>
+      <EmptyState v-if="!collections.length" icon="star" title="还没有收藏" subtitle="链接、文件或灵感，都先收在这里">
+        <button class="btn" @click="showAdd = true"><Icon name="plus" :size="16" /> 添加你的第一份收藏</button>
+      </EmptyState>
     </template>
 
     <Modal :title="sub === 'item' ? '添加物品' : '添加收藏'" :show="showAdd" @close="showAdd = false">
@@ -296,7 +337,11 @@ async function del(kind, id) {
           <div v-if="coverBusy" class="muted" style="font-size:12px;margin-top:6px">封面提取中…</div>
           <div v-if="form.fileMeta" class="muted" style="font-size:12px;margin-top:6px"><Icon :name="mimeIcon(form.fileMeta.mime)" :size="12" /> {{ form.fileMeta.name }} · {{ fmtSize(form.fileMeta.size) }}</div>
         </div>
-        <div class="field"><label>或填写链接</label><input v-model="form.url" placeholder="https://…" /></div>
+        <div class="field">
+          <label>或填写链接</label>
+          <input v-model="form.url" placeholder="https://…" @blur="onUrlBlur(form)" @paste="onUrlPaste(form, $event)" />
+          <div v-if="linkBusyTarget === form" class="muted" style="font-size:12px;margin-top:6px">封面获取中…</div>
+        </div>
         <div class="field"><label>描述</label><textarea v-model="form.description" placeholder="备注"></textarea></div>
         <div class="field"><label>标签（空格或逗号分隔）</label><input v-model="form.tags" placeholder="如：纪念 灵感" /></div>
         <div class="field">
@@ -312,7 +357,11 @@ async function del(kind, id) {
     <Modal :title="editKind === 'item' ? '编辑物品' : '编辑收藏'" :show="showEdit" @close="showEdit = false">
       <div class="field"><label>名称</label><input v-model="editData.name" /></div>
       <div v-if="editKind === 'item'" class="field"><label>数量</label><input type="number" v-model.number="editData.count" /></div>
-      <div v-else class="field"><label>链接（可选）</label><input v-model="editData.url" placeholder="https://…" /></div>
+      <div v-else class="field">
+        <label>链接（可选）</label>
+        <input v-model="editData.url" placeholder="https://…" @blur="onUrlBlur(editData)" @paste="onUrlPaste(editData, $event)" />
+        <div v-if="linkBusyTarget === editData" class="muted" style="font-size:12px;margin-top:6px">封面获取中…</div>
+      </div>
       <div class="field"><label>描述</label><textarea v-model="editData.description" placeholder="备注" style="min-height:50px"></textarea></div>
       <div class="field"><label>标签（空格或逗号分隔）</label><input v-model="editData.tags" placeholder="如：纪念 礼物" /></div>
       <div class="field">
@@ -320,18 +369,28 @@ async function del(kind, id) {
         <GlassUploader label="点击或拖拽设置封面（支持图片）" @file="pickEditCover" />
         <div v-if="editData.cover" style="margin-top:8px;height:80px;border-radius:12px;background-size:cover;background-position:center" :style="{ backgroundImage: 'url(' + editData.cover + ')' }"></div>
       </div>
+      <div v-if="editData && editData.id" class="rel-block">
+        <div class="rel-block-head">
+          <span>关联内容（{{ relatedForEdit.length }}）</span>
+          <button class="chip" @click="openRel(editKind === 'item' ? 'item' : 'collection', editData.id)"><Icon name="link" :size="14" /> 管理关联</button>
+        </div>
+        <EntityRelationsPanel :type="editKind === 'item' ? 'item' : 'collection'" :id="editData.id" />
+        <div v-if="!relatedForEdit.length" class="muted" style="font-size:12px">尚未关联任何实体，点击「管理关联」建立双向关联。</div>
+      </div>
       <button class="btn" style="width:100%" @click="saveEdit"><Icon name="edit" :size="16" /> 保存修改</button>
     </Modal>
+
+    <EntitySearchDialog :source-type="relType" :source-id="relId" :show="relShow" @close="relShow = false" />
   </div>
 </template>
 
 <style scoped>
 .ghost-btn { color: var(--eo-ink-soft); padding: 6px; }
-.ghost-btn-soft {
-  display: inline-flex; align-items: center; gap: 6px; padding: 9px 14px; border-radius: 999px; font-size: 14px; font-weight: 600;
-  color: var(--eo-primary-deep); background: var(--eo-glass); border: 1px solid var(--eo-glass-border);
-  backdrop-filter: blur(16px) saturate(165%); -webkit-backdrop-filter: blur(16px) saturate(165%);
-  box-shadow: inset 0 1px 0 var(--eo-glass-hi); transition: background .15s ease, transform .2s cubic-bezier(.22,1,.36,1);
-}
-.ghost-btn-soft:hover { background: var(--eo-chip); transform: translateY(-1px); }
+.cover-fallback { display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 26px; }
+.rel-block { border-top: 1px dashed var(--eo-glass-border); margin-top: 12px; padding-top: 12px; }
+.rel-block-head { display: flex; align-items: center; justify-content: space-between; font-weight: 700; font-size: 13px; margin-bottom: 8px; }
+.rel-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.rel-chip { display: inline-flex; align-items: center; gap: 5px; padding: 5px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--eo-chip); color: var(--eo-ink); }
+.rel-chip.dir-in { background: rgba(44, 44, 44, .16); }
+.rel-dir { font-size: 10px; opacity: .7; }
 </style>

@@ -4,6 +4,7 @@ import { useAppStore } from '../stores/app.js'
 import { useDialogStore } from '../stores/dialog.js'
 import { trashKindLabel } from '../lib/ops.js'
 import Icon from '../components/Icon.vue'
+import EmptyState from '../components/EmptyState.vue'
 
 const store = useAppStore()
 const dialog = useDialogStore()
@@ -41,21 +42,11 @@ async function purge(t) {
         <button class="ghost-btn" @click="purge(t)"><Icon name="x" :size="16" /></button>
       </div>
     </div>
-    <div v-if="!items.length" class="glass card empty-state">
-      <span class="empty-illo"><Icon name="trash" :size="30" /></span>
-      <div style="font-weight:700;font-size:15px">回收站是空的</div>
-      <div class="muted" style="font-size:12px;margin-top:6px">删除的任务 / 物品 / 收藏 / 笔记 / 足迹 / 照片会在这里保留 30 天</div>
-    </div>
+    <EmptyState v-if="!items.length" icon="trash" title="回收站是空的" subtitle="删除的任务 / 物品 / 收藏 / 笔记 / 足迹 / 照片会在这里保留 30 天" />
   </div>
 </template>
 
 <style scoped>
 .ghost-btn { color: var(--eo-ink-soft); padding: 6px; }
-.chip.danger { background: rgba(217, 105, 78, .16); color: var(--eo-bad); }
-.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 44px 18px; text-align: center; }
-.empty-illo {
-  width: 62px; height: 62px; border-radius: 22px; margin-bottom: 10px;
-  display: flex; align-items: center; justify-content: center;
-  background: var(--eo-chip); color: var(--eo-primary-deep);
-}
+.chip.danger { background: var(--eo-chip); color: var(--eo-ink); }
 </style>

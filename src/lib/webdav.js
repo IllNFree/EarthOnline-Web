@@ -7,6 +7,18 @@ import { SOFT_KIND_MAP, SOFT_KINDS, sanitizeState } from './model.js'
 
 // ===== 远端路径 =====
 export const DEFAULT_REMOTE_PATH = '/earth_online_backup.json'
+
+// WebDAV 凭据统一读取入口（凭据只落 localStorage，不进存档 / 不随备份导出）
+export const DAV_CFG_KEY = 'eo_webdav_cfg_v2'
+export function loadDavConfig() {
+  const dflt = { url: '', user: '', pass: '', path: DEFAULT_REMOTE_PATH, autoSync: true }
+  try {
+    return Object.assign(dflt, JSON.parse(localStorage.getItem(DAV_CFG_KEY) || '{}'))
+  } catch (e) {
+    return dflt
+  }
+}
+
 export function remotePathOf(cfg) {
   const p = String((cfg && cfg.path) || '').trim()
   if (!p) return DEFAULT_REMOTE_PATH
@@ -159,6 +171,15 @@ export function mergeBackup(localState, remoteState) {
     patch.profile = p
   }
   if (remoteState.birthDate) patch.birthDate = remoteState.birthDate
+  // 个人主页博客（文章 / 外链分享）：按 id 主键合并，入站优先且保留本地独有条目；
+  // 旧备份没有 blog 时不动本地数据，避免升级后文章被清空。
+  if (remoteState.blog && typeof remoteState.blog === 'object') {
+    const localBlog = localState.blog && typeof localState.blog === 'object' ? localState.blog : {}
+    patch.blog = {
+      posts: mergeList(localBlog.posts, remoteState.blog.posts),
+      links: mergeList(localBlog.links, remoteState.blog.links)
+    }
+  }
   return { patch, added }
 }
 

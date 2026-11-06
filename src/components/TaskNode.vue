@@ -53,8 +53,8 @@ function addChild() { if (openEditor) openEditor(null, props.task.id) }
       <input v-if="batch" type="checkbox" :checked="selectedIds.has(task.id)" @click.stop="select()" />
       <button class="avatar" :class="task.status === 'done' ? 'status-done' : ''" @click.stop="toggle"
               :style="task.status === 'done'
-                ? 'background:linear-gradient(135deg,#B8C9BC,#8FA98F);color:#fff'
-                : 'background:linear-gradient(135deg,var(--eo-primary-soft),var(--eo-primary-deep));color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.35)'">
+                ? 'background:#8C8C8C;color:#fff'
+                : 'background:var(--eo-primary);color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.22)'">
         <Icon :name="task.status === 'done' ? 'checklist' : 'flag'" :size="20" />
       </button>
       <div style="flex:1;min-width:0" @click="task.note ? (showNote = !showNote) : null">

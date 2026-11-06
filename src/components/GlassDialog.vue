@@ -58,7 +58,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
 <style scoped>
 .dialog-mask {
   position: fixed; inset: 0; z-index: 95; display: flex; align-items: center; justify-content: center;
-  padding: 24px; background: rgba(30, 18, 10, 0.45);
+  padding: 24px; background: rgba(30, 30, 29, 0.45);
 }
 .dialog-panel {
   position: relative; width: 100%; max-width: 420px; overflow: hidden; padding: 22px 20px 20px;
@@ -71,17 +71,17 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
 }
 .glow {
   position: absolute; top: -40px; right: -10px; width: 140px; height: 140px; border-radius: 50%;
-  background: radial-gradient(circle, rgba(232, 132, 60, 0.18), transparent 70%);
+  background: radial-gradient(circle, rgba(255,255,255,0.16), transparent 70%);
   pointer-events: none;
 }
-.dialog-panel.danger .glow { background: radial-gradient(circle, rgba(217, 105, 78, 0.20), transparent 70%); }
+.dialog-panel.danger .glow { background: radial-gradient(circle, rgba(255,255,255,0.16), transparent 70%); }
 .dialog-body { position: relative; z-index: 2; }
 .icon-well {
   width: 44px; height: 44px; flex: none; border-radius: 14px; display: flex; align-items: center; justify-content: center;
   color: var(--eo-primary); background: linear-gradient(145deg, rgba(255,255,255,.4), rgba(255,255,255,.08));
   border: 1px solid var(--eo-glass-border); box-shadow: inset 0 1px 0 var(--eo-glass-hi);
 }
-.dialog-panel.danger .icon-well { color: var(--eo-bad); }
+.dialog-panel.danger .icon-well { color: var(--eo-ink); }
 .dialog-title { margin: 0 0 6px; font-size: 17px; font-weight: 700; color: var(--eo-ink); }
 .dialog-message { margin: 0; font-size: 14px; line-height: 1.5; color: var(--eo-ink); }
 .dialog-detail { margin: 8px 0 0; font-size: 13px; line-height: 1.5; color: var(--eo-ink-soft); white-space: pre-wrap; }

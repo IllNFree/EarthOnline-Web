@@ -4,8 +4,13 @@ import { useRoute } from 'vue-router'
 import { useAppStore } from '../stores/app.js'
 import { useDialogStore } from '../stores/dialog.js'
 import Icon from '../components/Icon.vue'
+import PageHeader from '../components/PageHeader.vue'
 import GlassUploader from '../components/GlassUploader.vue'
 import Modal from '../components/GlassBottomSheet.vue'
+import EntitySearchDialog from '../components/EntitySearchDialog.vue'
+import EntityRelationsPanel from '../components/EntityRelationsPanel.vue'
+import EmptyState from '../components/EmptyState.vue'
+import { BI_LINK_TYPES } from '../lib/bilink.js'
 
 const store = useAppStore()
 const dialog = useDialogStore()
@@ -17,6 +22,12 @@ const kw = ref('')
 const editPhoto = ref(null)
 const editForm = ref({ name: '', tags: '', dataUrl: '' })
 const showEditPhoto = ref(false)
+// 模块三：关联内容弹窗（双向绑定 + 画布语义连线）
+const relShow = ref(false)
+const relType = ref('photo')
+const relId = ref(null)
+function openRel(type, id) { relType.value = type; relId.value = id; relShow.value = true }
+const relatedForEdit = computed(() => (editPhoto.value && editPhoto.value.id ? store.relatedEntitiesFor('photo', editPhoto.value.id) : []))
 const showAdd = ref(false)
 const form = ref({ name: '', tags: '', dataUrl: '' })
 // 主页速览「传照片」直达：自动弹开上传窗口
@@ -107,23 +118,21 @@ function batchDelete() {
 
 <template>
   <div class="page wide" @dragover="onDragOver" @drop="onDrop">
-    <div class="page-head" style="flex-wrap:wrap;gap:10px;margin-bottom:8px">
-      <div class="search-bar" style="flex:1;min-width:140px;max-width:280px">
-        <Icon name="search" :size="16" />
-        <input v-model="kw" placeholder="搜索照片名 / 标签…" />
-      </div>
-      <button class="add-btn" @click="showAdd = true"><Icon name="plus" :size="16" /> 添加照片</button>
-    </div>
-    <div class="row between" style="margin-bottom:12px">
-      <div class="row wrap" style="gap:6px;flex:1">
-        <button class="chip" :style="!tagFilter ? 'background:var(--eo-primary);color:#fff' : ''" @click="tagFilter = ''">全部</button>
-        <button v-for="t in tags" :key="t" class="chip" :style="tagFilter === t ? 'background:var(--eo-primary);color:#fff' : ''" @click="tagFilter = tagFilter === t ? '' : t">
+    <PageHeader title="相册" v-model:query="kw" placeholder="搜索照片名 / 标签…"
+      subtitle="桌面端可将图片文件直接拖入本页上传（存入当前相册）">
+      <template #actions>
+        <button class="add-btn" @click="showAdd = true"><Icon name="plus" :size="16" /> 添加照片</button>
+      </template>
+      <template #filters>
+        <button class="chip" :class="{ 'is-on': !tagFilter }" @click="tagFilter = ''">全部</button>
+        <button v-for="t in tags" :key="t" class="chip" :class="{ 'is-on': tagFilter === t }" @click="tagFilter = tagFilter === t ? '' : t">
           <Icon name="tag" :size="12" /> {{ t }}
         </button>
-      </div>
-      <button class="chip" @click="batchMode = !batchMode"><Icon name="layers" :size="14" /> 批量</button>
-    </div>
-    <div class="muted" style="font-size:12px;margin:-4px 4px 10px">桌面端可将图片文件直接拖入本页上传（存入当前相册）。</div>
+      </template>
+      <template #tools>
+        <button class="chip" @click="batchMode = !batchMode"><Icon name="layers" :size="14" /> 批量</button>
+      </template>
+    </PageHeader>
 
     <div class="grid3">
       <div v-for="p in photos" :key="p.id" class="glass thumb-round" style="position:relative;cursor:pointer"
@@ -137,12 +146,9 @@ function batchDelete() {
         <div v-if="p.name" style="font-size:11px;padding:4px 6px;color:var(--eo-ink-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ p.name }}</div>
       </div>
     </div>
-    <div v-if="!photos.length" class="glass card empty-state">
-      <span class="empty-illu"><Icon name="album" :size="32" /></span>
-      <div class="es-title">还没有照片</div>
-      <div class="es-sub">上传一张照片，把值得记住的瞬间存进相册。</div>
+    <EmptyState v-if="!photos.length" icon="album" title="还没有照片" subtitle="上传一张照片，把值得记住的瞬间存进相册。">
       <button class="btn" @click="showAdd = true"><Icon name="plus" :size="16" /> 添加照片</button>
-    </div>
+    </EmptyState>
 
     <div v-if="batchMode" class="row" style="gap:8px;margin-top:14px">
       <button class="btn danger" @click="batchDelete"><Icon name="trash" :size="16" /> 删除</button>
@@ -157,11 +163,21 @@ function batchDelete() {
         <label>替换图片</label>
         <GlassUploader @file="pickEditCover" />
       </div>
+      <div v-if="editPhoto && editPhoto.id" class="rel-block">
+        <div class="rel-block-head">
+          <span>关联内容（{{ relatedForEdit.length }}）</span>
+          <button class="chip" @click="openRel('photo', editPhoto.id)"><Icon name="link" :size="14" /> 管理关联</button>
+        </div>
+        <EntityRelationsPanel type="photo" :id="editPhoto.id" />
+        <div v-if="!relatedForEdit.length" class="muted" style="font-size:12px">尚未关联任何实体，点击「管理关联」建立双向关联。</div>
+      </div>
       <div class="row" style="gap:8px;margin-top:6px">
         <button class="btn danger" style="flex:1" @click="delEdit"><Icon name="trash" :size="16" /> 删除</button>
         <button class="btn" style="flex:2" @click="saveEdit"><Icon name="edit" :size="16" /> 保存修改</button>
       </div>
     </Modal>
+
+    <EntitySearchDialog :source-type="relType" :source-id="relId" :show="relShow" @close="relShow = false" />
 
     <Modal title="添加照片" :show="showAdd" @close="showAdd = false">
       <div class="field"><label>选择图片</label><GlassUploader @file="pick" /></div>
@@ -172,3 +188,12 @@ function batchDelete() {
     </Modal>
   </div>
 </template>
+
+<style scoped>
+.rel-block { border-top: 1px dashed var(--eo-glass-border); margin-top: 12px; padding-top: 12px; }
+.rel-block-head { display: flex; align-items: center; justify-content: space-between; font-weight: 700; font-size: 13px; margin-bottom: 8px; }
+.rel-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.rel-chip { display: inline-flex; align-items: center; gap: 5px; padding: 5px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--eo-chip); color: var(--eo-ink); }
+.rel-chip.dir-in { background: rgba(44, 44, 44, .16); }
+.rel-dir { font-size: 10px; opacity: .7; }
+</style>

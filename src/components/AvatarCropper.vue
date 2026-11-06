@@ -1,6 +1,7 @@
 <script setup>
-// 头像裁剪器：鼠标滚轮缩放 + 拖动定位 + canvas 输出 512×512
+// 头像裁剪器：鼠标滚轮缩放 + 拖动定位 + canvas 输出 512×512（PNG，保留透明通道）
 // 交互：在预览区滚动 = 缩放；按住拖动 = 移动图片；圆形裁剪框居中固定
+// 点「确认」= 立即裁剪并落库，没有中间步骤
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import Icon from './Icon.vue'
 
@@ -84,15 +85,22 @@ function apply() {
   const canvas = document.createElement('canvas')
   canvas.width = OUT; canvas.height = OUT
   const ctx = canvas.getContext('2d')
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = 'high'
   const b = baseCover.value
   // 预览坐标 → 原图坐标：drawW = im.width * b * scale ⇒ 原图像素 = 预览px / (b*scale)
   const k = b * scale.value
-  const sx = (VIEW / 2 - offX.value - drawW.value / 2) / k
-  const sy = (VIEW / 2 - offY.value - drawH.value / 2) / k
-  const sw = VIEW / k
-  const sh = VIEW / k
+  const sw = Math.min(im.width, VIEW / k)
+  const sh = Math.min(im.height, VIEW / k)
+  const rawX = (VIEW / 2 - offX.value - drawW.value / 2) / k
+  const rawY = (VIEW / 2 - offY.value - drawH.value / 2) / k
+  // 源矩形夹紧在图片范围内：越界会取到透明像素，导出处即出现黑边 / 缺角
+  const sx = Math.max(0, Math.min(im.width - sw, rawX))
+  const sy = Math.max(0, Math.min(im.height - sh, rawY))
+  // 不填任何底色，PNG 保留透明通道 —— JPEG 无 alpha，透明区会被压成纯黑，这正是黑边来源
+  ctx.clearRect(0, 0, OUT, OUT)
   ctx.drawImage(im, sx, sy, sw, sh, 0, 0, OUT, OUT)
-  emit('crop', canvas.toDataURL('image/jpeg', 0.86))
+  emit('crop', canvas.toDataURL('image/png'))
 }
 </script>
 
@@ -105,7 +113,7 @@ function apply() {
     </div>
     <div class="muted" style="font-size:12px;text-align:center;margin-top:6px">滚轮缩放 · 按住拖动调整位置</div>
     <div class="row" style="gap:8px;margin-top:10px">
-      <button class="btn" style="flex:1" @click="apply"><Icon name="checklist" :size="16" /> 使用该头像</button>
+      <button class="btn" style="flex:1" @click="apply"><Icon name="checklist" :size="16" /> 确认</button>
       <button class="btn ghost" @click="emit('cancel')"><Icon name="x" :size="16" /></button>
     </div>
   </div>
@@ -124,12 +132,12 @@ function apply() {
 /* 圆形裁剪框参考遮罩：中心圆外压暗 */
 .ac-mask {
   position: absolute; inset: 0; pointer-events: none;
-  background: radial-gradient(circle at center, transparent 0, transparent calc(130px - 1px), rgba(0,0,0,.45) 130px);
+  background: radial-gradient(circle at center, transparent 0, transparent calc(130px - 1px), rgba(44, 44, 44, .45) 130px);
 }
 .ac-mask::after {
   content: ''; position: absolute; left: 50%; top: 50%; width: 260px; height: 260px;
   transform: translate(-50%, -50%); border-radius: 50%;
   border: 2px solid rgba(255, 255, 255, .8);
-  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0);
+  box-shadow: 0 0 0 9999px rgba(44, 44, 44, 0);
 }
 </style>

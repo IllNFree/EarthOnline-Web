@@ -6,13 +6,19 @@ import { VitePWA } from 'vite-plugin-pwa'
 // 设计目标：standalone 沉浸式、主题色对齐 Android、启动屏防白屏、可安装。
 export default defineConfig({
   base: './',
+  // 3.0：构建时间戳，用于「关于」页与线上版本核对
+  define: {
+    __EO_BUILDTIME__: JSON.stringify(new Date().toISOString())
+  },
   plugins: [
     vue(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // 3.0：改为 prompt 模式 —— 新版本等用户点击「立即刷新」再切换，避免编辑中被强制重载
+      registerType: 'prompt',
       includeAssets: [
         'icons/icon.svg',
         'icons/icon-512.png',
+        'icons/icon-maskable-512.png',
         'icons/icon.png',
         'icons/sponsor-qr.webp'
       ],
@@ -21,8 +27,8 @@ export default defineConfig({
         short_name: '地球Online',
         description: '记录你的人生副本 — 任务 / 背包 / 笔记 / 相册 / 地图 / AI 中枢',
         lang: 'zh-CN',
-        theme_color: '#D4A373',
-        background_color: '#F8F6F2',
+        theme_color: '#FAF8F3',
+        background_color: '#FAF8F3',
         display: 'standalone',
         display_override: ['standalone', 'window-controls-overlay'],
         orientation: 'portrait',
@@ -30,15 +36,16 @@ export default defineConfig({
         scope: './',
         icons: [
           { src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
-          { src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+          { src: 'icons/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
           { src: 'icons/icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' }
         ]
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,webp,json,wasm}'],
         cleanupOutdatedCaches: true,
-        clientsClaim: true,
-        skipWaiting: true,
+        // prompt 模式：不自动抢占客户端，等用户确认后由 updateSW(true) 接管
+        clientsClaim: false,
+        skipWaiting: false,
         navigateFallback: 'index.html',
         runtimeCaching: [
           {
@@ -53,6 +60,7 @@ export default defineConfig({
   ],
   build: {
     outDir: 'dist',
+    // 每次构建先清空 dist：否则旧 chunk 会累积并被 PWA 预缓存（曾涨到 1500+ 文件）
     emptyOutDir: true,
     target: 'es2018',
     chunkSizeWarningLimit: 1200

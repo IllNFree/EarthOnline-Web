@@ -4,6 +4,7 @@ import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAppStore } from '../stores/app.js'
 import { tokenizeBiLinks, resolveBiLink, BI_LINK_TYPES } from '../lib/bilink.js'
+import { gotoEntity } from '../services/CanvasNavigator.js'
 import Icon from './Icon.vue'
 
 const props = defineProps({
@@ -17,8 +18,8 @@ function resolve(t) {
   return resolveBiLink(store.data, t.linkType, t.id)
 }
 function goto(t) {
-  const route = (BI_LINK_TYPES[t.linkType] || {}).route
-  if (route) router.push(route)
+  // 模块四：点击关联标签 → 穿梭回画布对应节点（画布激活则聚焦，否则跳回画布并定位）
+  gotoEntity({ type: t.linkType, id: t.id, router })
 }
 </script>
 
@@ -47,14 +48,15 @@ function goto(t) {
   padding: 1px 8px; margin: 0 2px; border-radius: 999px; font-size: 13px; font-weight: 600;
   background: var(--eo-chip); color: var(--eo-primary-deep);
   border: 1px solid var(--eo-glass-border);
-  transition: transform .14s ease, filter .14s ease;
+  transition: transform var(--eo-lift-dur, .2s) var(--eo-lift-ease, cubic-bezier(.2,.8,.2,1)),
+    box-shadow var(--eo-lift-dur, .2s) var(--eo-lift-ease, cubic-bezier(.2,.8,.2,1));
 }
-.bilink-chip:hover { filter: brightness(1.05); transform: translateY(-1px); }
-.bilink-chip:active { transform: scale(.96); }
+.bilink-chip:hover { transform: translateY(var(--eo-lift)); box-shadow: var(--eo-shadow-lift); }
+.bilink-chip:active { transform: translateY(-1px); }
 .bilink-task { color: var(--eo-primary-deep); }
 .bilink-memo { color: var(--eo-accent); }
-.bilink-item { color: #6E8BC4; }
-.bilink-photo { color: var(--eo-good); }
-.bilink-collection { color: var(--eo-bad); }
-.bilink-location { color: #B08968; }
+.bilink-item { color: #C4C2BC; }
+.bilink-photo { color: var(--eo-ink-soft); }
+.bilink-collection { color: var(--eo-ink-soft); }
+.bilink-location { color: #8C8C8C; }
 </style>

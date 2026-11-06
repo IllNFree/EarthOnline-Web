@@ -1,5 +1,5 @@
 <script setup>
-// 全局玻璃卡片组件：统一套用地球Online 暖色调液态玻璃材质。
+// 全局玻璃卡片组件：统一套用地球Online 灰白蓝极简液态玻璃材质。
 import { motion } from 'motion-v'
 const props = defineProps({
   padding: { type: [Number, String], default: 16 },
@@ -24,10 +24,10 @@ const props = defineProps({
 <style scoped>
 .eo-card { position: relative; border-radius: var(--eo-radius); overflow: hidden; }
 .eo-card--hover { cursor: pointer; transition: transform .18s ease, box-shadow .18s ease; }
-.eo-card--hover:hover { transform: translateY(-2px); box-shadow: 0 16px 34px -14px rgba(201,100,63,.42); }
+.eo-card--hover:hover { box-shadow: 0 16px 34px -14px rgba(44, 44, 44, .14); }
 .eo-card__glow {
   position: absolute; top: -40px; right: -16px; width: 150px; height: 150px; border-radius: 50%;
-  background: radial-gradient(circle, rgba(232,132,60,.18), transparent 70%); pointer-events: none;
+  background: transparent; pointer-events: none;
 }
 .eo-card__body { position: relative; z-index: 1; }
 </style>

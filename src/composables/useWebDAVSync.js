@@ -3,15 +3,11 @@
 // 刻意「彻底隐藏同步弹窗」：本模块不弹任何 toast / 弹窗，仅在后台静默执行。
 import { onMounted, onUnmounted } from 'vue'
 import { useAppStore } from '../stores/app.js'
-import { pullBackup, pushBackup, mergeBackup, remoteIsNewer, DEFAULT_REMOTE_PATH } from '../lib/webdav.js'
+import { pullBackup, pushBackup, mergeBackup, remoteIsNewer, DEFAULT_REMOTE_PATH, loadDavConfig } from '../lib/webdav.js'
 
 const DAV_KEY = 'eo_webdav_cfg_v2'
 function loadDav() {
-  try {
-    return Object.assign({ url: '', user: '', pass: '', path: DEFAULT_REMOTE_PATH, autoSync: true }, JSON.parse(localStorage.getItem(DAV_KEY) || '{}'))
-  } catch (e) {
-    return { url: '', user: '', pass: '', path: DEFAULT_REMOTE_PATH, autoSync: true }
-  }
+  return loadDavConfig()
 }
 
 export function useWebDAVSync() {
@@ -23,15 +19,15 @@ export function useWebDAVSync() {
     if (!cfg.autoSync || !cfg.url || !store.online) return
     try {
       const r = await pullBackup(cfg)
-      if (!r.ok) return
+      if (!r.ok) { store.setSyncError(r.error || '云端拉取失败'); return }
+      store.setSyncError('')
       const remote = r.payload
       if (!remoteIsNewer(remote.exportedAt, store.data.lastSyncAt)) return
       const { patch } = mergeBackup(store.data, remote.state)
       Object.keys(patch).forEach((k) => { store.data[k] = patch[k] })
       store.persist()
-      store.recomputeXp()
       store.data.lastSyncAt = remote.exportedAt || new Date().toISOString()
-    } catch (e) { /* 静默失败，不阻塞 UI */ }
+    } catch (e) { store.setSyncError((e && e.message) || '云端拉取失败') }
   }
 
   async function silentPush() {
@@ -39,8 +35,9 @@ export function useWebDAVSync() {
     if (!cfg.autoSync || !cfg.url || !store.online) return
     try {
       const r = await pushBackup(cfg, store.data)
-      if (r.ok) store.data.lastSyncAt = r.syncedAt || new Date().toISOString()
-    } catch (e) { /* 静默失败 */ }
+      if (r.ok) { store.data.lastSyncAt = r.syncedAt || new Date().toISOString(); store.setSyncError('') }
+      else store.setSyncError(r.error || '云端推送失败')
+    } catch (e) { store.setSyncError((e && e.message) || '云端推送失败') }
   }
 
   function onVisibility() {

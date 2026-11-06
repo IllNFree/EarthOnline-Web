@@ -2,7 +2,7 @@
 // 对应需求 3：画布内任意 @[Type:ID] 引用均可双向跳转。
 import { useAppStore } from '../stores/app.js'
 import { useDialogStore } from '../stores/dialog.js'
-import { canvasEnsureNode, canvasIsActive, canvasFocus } from './canvasBridge.js'
+import { canvasEnsureNode, canvasIsActive, canvasFocus, requestCanvasFocus } from './canvasBridge.js'
 
 // 实体类型 → 详情页路由（降级跳转用）
 const DETAIL_ROUTE = {
@@ -46,6 +46,40 @@ export async function canvasNavigate({ type, id, router }) {
       return
     }
   }
+  if (router && DETAIL_ROUTE[t]) router.push(DETAIL_ROUTE[t])
+}
+
+/**
+ * 模块四：实体深度绑定 —— 点击任意关联标签 / 引用时：
+ * ① 画布已激活 → 若存在节点则聚焦闪烁；否则在画布内询问创建并聚焦；
+ * ② 画布未激活（处于详情页）→ 记录待聚焦实体并跳回画布主页，挂载后自动定位到对应节点。
+ * 这样「详情页的关联标签」能直接带你穿梭回画布对应的节点。
+ */
+export async function gotoEntity({ type, id, router }) {
+  const store = useAppStore()
+  const dialog = useDialogStore()
+  const t = type === 'note' ? 'memo' : type
+  const existing = store.data.whiteboardNodes.find((n) => !n.deletedAt && n.type === t && n.refId === id)
+  if (existing) {
+    if (canvasIsActive()) { canvasFocus(existing); return }
+    requestCanvasFocus(t, id); if (router) router.push('/'); return
+  }
+  if (canvasIsActive()) {
+    const ok = await dialog.confirm({
+      title: '画布中未找到该实体',
+      message: '是否在当前画布中创建该节点？',
+      confirmText: '创建节点',
+      cancelText: '去详情页'
+    })
+    if (ok) {
+      const node = canvasEnsureNode(t, id, { center: true })
+      if (node) canvasFocus(node)
+      return
+    }
+    if (router && DETAIL_ROUTE[t]) router.push(DETAIL_ROUTE[t])
+    return
+  }
+  // 不在画布：降级直接跳详情页（若后续回到画布仍可按需聚焦）
   if (router && DETAIL_ROUTE[t]) router.push(DETAIL_ROUTE[t])
 }
 

@@ -1,0 +1,24 @@
+# EarthOnline 同步后端（Cloudflare Workers + D1）—— 自包含，独立于前端依赖
+name = "eo-sync"
+main = "worker.mjs"
+# 稳定兼容日期（Workers 运行时语义按此日期固定，避免未来默认行为变化）
+compatibility_date = "2025-06-01"
+
+# D1 绑定名必须是 DB（worker.mjs 里用 env.DB）。
+# database_id 是占位符：先执行 `npx wrangler d1 create eo-sync`，
+# 把返回的 uuid 填到下面的 database_id（deploy.ps1 会给出提示/可自动写回）。
+[[d1_databases]]
+binding = "DB"
+database_name = "eo-sync"
+database_id = "92a30472-59f4-4696-8f1d-f587507b65e5"
+
+# 可选：部署后用 `wrangler secret put` 配置以下项，不要写进仓库。
+# EO_MASTER_KEY        必配。会话签名 / OAuth state / provider token 加密都从它派生；
+#                      未配置时使用固定开发密钥，生产环境绝对不能这样跑。
+# GITHUB_CLIENT_ID     GitHub OAuth App 的 Client ID（缺省时 OAuth start 返回 501，其它接口正常）
+# GITHUB_CLIENT_SECRET GitHub OAuth App 的 Client Secret
+#
+# 非敏感变量可放这里：
+# [vars]
+# EO_PUBLIC_BASE_URL = "https://eo-sync.<your-subdomain>.workers.dev"
+# ALLOWED_ORIGIN = "https://<your-pages-domain>"

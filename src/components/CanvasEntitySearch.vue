@@ -64,7 +64,7 @@ function activate(r) {
 </template>
 
 <style scoped>
-.ces-mask { position: fixed; inset: 0; z-index: 90; background: rgba(20, 16, 10, 0.32); display: flex; align-items: flex-start; justify-content: center; padding-top: 12vh; }
+.ces-mask { position: fixed; inset: 0; z-index: 90; background: rgba(20, 20, 19, 0.32); display: flex; align-items: flex-start; justify-content: center; padding-top: 12vh; }
 .ces-panel { width: min(560px, 92vw); max-height: 70vh; display: flex; flex-direction: column; padding: 16px; border-radius: 18px; }
 .ces-input { width: 100%; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--eo-glass-border); background: var(--eo-glass); color: var(--eo-ink); font-size: 14px; margin-bottom: 10px; }
 .ces-list { overflow-y: auto; flex: 1; min-height: 0; }

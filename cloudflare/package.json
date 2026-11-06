@@ -1,0 +1,16 @@
+{
+  "name": "eo-sync-cloudflare",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "EarthOnline 的 Cloudflare Workers + D1 后端（自包含，wrangler 不进入前端依赖）",
+  "scripts": {
+    "dev": "wrangler dev --port 8788 --local",
+    "deploy": "wrangler deploy",
+    "db:init:local": "wrangler d1 execute eo-sync --local --file=./schema.sql",
+    "db:init:remote": "wrangler d1 execute eo-sync --remote --file=./schema.sql"
+  },
+  "devDependencies": {
+    "wrangler": "^4"
+  }
+}

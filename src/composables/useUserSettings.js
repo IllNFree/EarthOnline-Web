@@ -5,8 +5,6 @@ import { useAppStore } from '../stores/app.js'
 export function useUserSettings() {
   const store = useAppStore()
   return {
-    get homeDefaultView() { return store.data.homeDefaultView },
-    set homeDefaultView(v) { store.data.homeDefaultView = v === 'canvas' ? 'canvas' : 'dashboard'; store.persist() },
     get enableCustomContextMenu() { return store.data.enableCustomContextMenu },
     set enableCustomContextMenu(v) { store.data.enableCustomContextMenu = !!v; store.persist() },
     get enableClipboardWatch() { return store.data.enableClipboardWatch },

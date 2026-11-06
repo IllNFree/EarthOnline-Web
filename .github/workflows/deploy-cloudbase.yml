@@ -1,0 +1,103 @@
+# 构建并部署到腾讯云 CloudBase（静态托管 + 云函数 + 网关）
+# 触发：push 到 main / 手动 workflow_dispatch
+# 需要的 GitHub Secrets：TCB_ENV_ID、TCB_SECRET_ID、TCB_SECRET_KEY、EO_MASTER_KEY
+# 可选 Secrets：EO_PUBLIC_BASE_URL、ALLOWED_ORIGIN、SMTP_HOST、SMTP_PORT、SMTP_USER、SMTP_PASS、SMTP_FROM
+# 可选 Secrets：GITHUB_CLIENT_ID、GITHUB_CLIENT_SECRET、EO_MAIL_DEBUG、EO_DEBUG
+# 所有密钥只在 runner 内生成 cloudbaserc.json，仓库不保存任何明文。
+
+name: Deploy CloudBase
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-cloudbase
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Guard secrets
+        id: guard
+        env:
+          TCB_ENV_ID: ${{ secrets.TCB_ENV_ID }}
+          TCB_SECRET_ID: ${{ secrets.TCB_SECRET_ID }}
+          TCB_SECRET_KEY: ${{ secrets.TCB_SECRET_KEY }}
+          EO_MASTER_KEY: ${{ secrets.EO_MASTER_KEY }}
+        run: |
+          missing=""
+          for k in TCB_ENV_ID TCB_SECRET_ID TCB_SECRET_KEY EO_MASTER_KEY; do
+            eval "v=\$$k"
+            if [ -z "$v" ]; then missing="$missing $k"; fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::缺少 Secrets：$missing，跳过部署（构建仍会执行）"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Install CloudBase CLI
+        if: steps.guard.outputs.ready == 'true'
+        run: npm i -g @cloudbase/cli@latest
+
+      - name: Generate cloudbaserc from secrets
+        if: steps.guard.outputs.ready == 'true'
+        env:
+          TCB_ENV_ID: ${{ secrets.TCB_ENV_ID }}
+          EO_MASTER_KEY: ${{ secrets.EO_MASTER_KEY }}
+          EO_PUBLIC_BASE_URL: ${{ secrets.EO_PUBLIC_BASE_URL }}
+          ALLOWED_ORIGIN: ${{ secrets.ALLOWED_ORIGIN }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          SMTP_FROM: ${{ secrets.SMTP_FROM }}
+          EO_MAIL_DEBUG: ${{ secrets.EO_MAIL_DEBUG }}
+          EO_DEBUG: ${{ secrets.EO_DEBUG }}
+          GITHUB_CLIENT_ID: ${{ secrets.GITHUB_CLIENT_ID }}
+          GITHUB_CLIENT_SECRET: ${{ secrets.GITHUB_CLIENT_SECRET }}
+        run: node .github/scripts/gen-cloudbaserc.mjs cloudbase/cloudbaserc.json
+
+      - name: Login CloudBase
+        if: steps.guard.outputs.ready == 'true'
+        run: tcb login --apiKeyId "${{ secrets.TCB_SECRET_ID }}" --apiKey "${{ secrets.TCB_SECRET_KEY }}"
+
+      - name: Deploy
+        if: steps.guard.outputs.ready == 'true'
+        working-directory: cloudbase
+        run: tcb deploy --only functions,hosting,gateway -e "${{ secrets.TCB_ENV_ID }}"
+
+      - name: Smoke test
+        if: steps.guard.outputs.ready == 'true'
+        env:
+          EO_PUBLIC_BASE_URL: ${{ secrets.EO_PUBLIC_BASE_URL }}
+          TCB_ENV_ID: ${{ secrets.TCB_ENV_ID }}
+        run: |
+          BASE="${EO_PUBLIC_BASE_URL:-https://${TCB_ENV_ID}-1517552805.tcloudbaseapp.com}"
+          BASE="${BASE%/}"
+          echo "等待静态托管生效…"
+          sleep 5
+          curl -fsS "$BASE/" -o /dev/null && echo "站点 200 OK"
+          curl -fsS "$BASE/api/health" && echo "健康检查 OK"

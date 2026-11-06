@@ -6,13 +6,19 @@ import { useAppStore } from '../stores/app.js'
 import { useDialogStore } from '../stores/dialog.js'
 import { todayStr } from '../lib/model.js'
 import Icon from '../components/Icon.vue'
+import PageHeader from '../components/PageHeader.vue'
+import EmptyState from '../components/EmptyState.vue'
 import Modal from '../components/GlassBottomSheet.vue'
+import EntitySearchDialog from '../components/EntitySearchDialog.vue'
+import EntityRelationsPanel from '../components/EntityRelationsPanel.vue'
+import { BI_LINK_TYPES } from '../lib/bilink.js'
 
 const store = useAppStore()
 const dialog = useDialogStore()
 const route = useRoute()
 const showAdd = ref(false)
 const form = ref({ type: 'expense', amount: '', category: '', note: '', date: '' })
+const editingId = ref('')
 const amountInput = ref(null)
 // 主页速览「记一笔」直达：自动弹开记账窗口并聚焦金额输入框
 onMounted(() => {
@@ -59,7 +65,7 @@ const byCategory = computed(() => {
 })
 const byCategoryTotal = computed(() => byCategory.value.reduce((s, c) => s + c.v, 0))
 // 多巴胺分类配色（高饱和、按分类名确定性取色，保证环形图与列表一致）
-const PALETTE = ['#FF6B6B', '#FF9F43', '#FECA57', '#1DD1A1', '#10AC84', '#48DBFB', '#54A0FF', '#5F27CD', '#EE5253', '#00D2D3', '#FF9FF3', '#F368E0']
+const PALETTE = ['#4A4A48', '#6E6E73', '#8C8C8C', '#A8A5A0', '#C7C4BE', '#D8D4CD', '#3A3A38', '#7A776F', '#B0ADA5', '#E0DDD6', '#7E9A7E', '#A97C72']
 function catColor(i) { return PALETTE[i % PALETTE.length] }
 function catIndexOf(name) {
   let h = 0
@@ -112,7 +118,14 @@ function addCat() {
 }
 
 function openAdd() {
+  editingId.value = ''
   form.value = { type: 'expense', amount: '', category: '', note: '', date: '' }
+  showAdd.value = true
+}
+// 编辑已有记录：复用「记一笔」浮层，保存时走 updateLedgerRecord
+function editRec(r) {
+  editingId.value = r.id
+  form.value = { type: r.type, amount: String(r.amount), category: r.category || '', note: r.note || '', date: r.date || '' }
   showAdd.value = true
 }
 function setType(t) {
@@ -120,10 +133,13 @@ function setType(t) {
   if (!cats.value.some((c) => c.name === form.value.category)) form.value.category = ''
 }
 function save() {
-  const r = store.addLedgerRecord({ ...form.value, amount: Number(form.value.amount) })
+  const r = editingId.value
+    ? store.updateLedgerRecord(editingId.value, { ...form.value, amount: Number(form.value.amount) })
+    : store.addLedgerRecord({ ...form.value, amount: Number(form.value.amount) })
   if (!r.ok) return store.showToast(r.error)
-  store.showToast('已记账')
+  store.showToast(editingId.value ? '已保存修改' : '已记账')
   showAdd.value = false
+  editingId.value = ''
 }
 async function del(id) {
   const ok = await dialog.confirm({ title: '删除记录', message: '该记账记录将被删除。', danger: true, confirmText: '删除' })
@@ -193,7 +209,6 @@ function importLedger(e) {
       })
       store.persist()
       store.showToast('导入完成：新增 ' + added + ' 条' + (skipped ? '，跳过 ' + skipped + ' 条（重复/无效）' : ''))
-      if (added) store.recomputeXp()
     } catch (err) {
       store.showToast('导入失败：' + err.message)
     } finally {
@@ -203,30 +218,36 @@ function importLedger(e) {
   r.readAsText(f)
 }
 const fmtDay = (d) => d.slice(5).replace('-', ' 月 ') + ' 日'
+// 模块三：账目详情 + 关联内容（双向绑定 + 画布语义连线）
+const showDetail = ref(false)
+const detailRec = ref(null)
+function openDetailRec(r) { detailRec.value = r; showDetail.value = true }
+const relShow = ref(false)
+const relType = ref('ledger')
+const relId = ref(null)
+function openRel(type, id) { relType.value = type; relId.value = id; relShow.value = true }
+const relatedForDetail = computed(() => (detailRec.value ? store.relatedEntitiesFor('ledger', detailRec.value.id) : []))
 </script>
 
 <template>
   <div class="page wide">
-    <div class="page-head">
-      <div class="search-bar" style="max-width:240px">
-        <Icon name="search" :size="16" />
-        <input v-model="kw" placeholder="搜索分类 / 备注…" />
-      </div>
-      <div class="row" style="gap:8px">
-        <button class="add-btn" @click="openAdd"><Icon name="plus" :size="16" /> 记一笔</button>
+    <PageHeader title="记账" v-model:query="kw" placeholder="搜索分类 / 备注…"
+      :subtitle="monthTitle">
+      <template #actions>
         <button class="ghost-btn-soft" @click="catMgr = true"><Icon name="tag" :size="16" /> 分类管理</button>
-      </div>
-    </div>
+        <button class="add-btn" @click="openAdd"><Icon name="plus" :size="16" /> 记一笔</button>
+      </template>
+    </PageHeader>
     <!-- 月度切换 + 概览 -->
     <div class="glass card">
       <div class="row between" style="margin-bottom:10px">
-        <button class="btn ghost" style="padding:6px 12px" @click="shiftMonth(-1)"><Icon name="chevron" :size="16" style="transform:rotate(180deg)" /></button>
+        <button class="btn ghost" style="padding:6px 12px" @click="shiftMonth(-1)"><Icon name="chevron-left" :size="16" /></button>
         <span style="font-weight:700">{{ monthTitle }}</span>
-        <button class="btn ghost" style="padding:6px 12px" @click="shiftMonth(1)"><Icon name="chevron" :size="16" /></button>
+        <button class="btn ghost" style="padding:6px 12px" @click="shiftMonth(1)"><Icon name="chevron-right" :size="16" /></button>
       </div>
       <div class="led-summary">
-        <div class="led-sum-item"><div class="muted" style="font-size:12px">收入</div><div style="font-weight:800;font-size:18px;color:#34C759">+{{ summary.income.toFixed(2) }}</div></div>
-        <div class="led-sum-item"><div class="muted" style="font-size:12px">支出</div><div style="font-weight:800;font-size:18px;color:#FF3B30">-{{ summary.expense.toFixed(2) }}</div></div>
+        <div class="led-sum-item"><div class="muted" style="font-size:12px">收入</div><div style="font-weight:800;font-size:18px;color:#7E9A7E">+{{ summary.income.toFixed(2) }}</div></div>
+        <div class="led-sum-item"><div class="muted" style="font-size:12px">支出</div><div style="font-weight:800;font-size:18px;color:#A97C72">-{{ summary.expense.toFixed(2) }}</div></div>
         <div class="led-sum-item"><div class="muted" style="font-size:12px">结余</div><div style="font-weight:900;font-size:20px;color:var(--eo-ink)">{{ summary.balance.toFixed(2) }}</div></div>
       </div>
     </div>
@@ -289,21 +310,23 @@ const fmtDay = (d) => d.slice(5).replace('-', ' 月 ') + ' 日'
           <div style="font-weight:600;font-size:14px">{{ r.category }}<span v-if="r.note" class="muted" style="font-weight:400;font-size:12px"> · {{ r.note }}</span></div>
           <div class="muted" style="font-size:12px">{{ fmtDay(r.date) }}</div>
         </div>
-        <span class="led-amt" :style="r.type === 'income' ? 'color:#34C759' : 'color:#FF3B30'">
+        <span class="led-amt" :style="r.type === 'income' ? 'color:#7E9A7E' : 'color:#A97C72'">
           {{ r.type === 'income' ? '+' : '-' }}{{ r.amount.toFixed(2) }}
         </span>
-        <button class="ghost-btn" @click="del(r.id)"><Icon name="trash" :size="16" /></button>
+        <div class="row" style="gap:2px">
+          <button class="ghost-btn" title="编辑" @click.stop="editRec(r)"><Icon name="edit" :size="16" /></button>
+          <button class="ghost-btn" title="关联内容" @click.stop="openRel('ledger', r.id)"><Icon name="link" :size="16" /></button>
+          <button class="ghost-btn" title="详情" @click.stop="openDetailRec(r)"><Icon name="info" :size="16" /></button>
+          <button class="ghost-btn" @click.stop="del(r.id)"><Icon name="trash" :size="16" /></button>
+        </div>
       </div>
     </div>
-    <!-- 空状态：独立容器，无边框 / 无分割线，图标与文案居中 -->
-    <div v-else class="led-empty">
-      <span class="empty-illu"><Icon name="wallet" :size="32" /></span>
-      <div class="es-title">本月还没有账单</div>
-      <div class="es-sub">点右上角「记一笔」，记录第一笔收支</div>
+    <!-- 空状态：全局统一组件（带 Haze 玻璃卡片框，图标 / 文案 / 按钮居中） -->
+    <EmptyState v-else icon="wallet" title="本月还没有账单" subtitle="点右上角「记一笔」，记录第一笔收支">
       <button class="btn" @click="openAdd"><Icon name="plus" :size="16" /> 记一笔</button>
-    </div>
+    </EmptyState>
 
-    <Modal title="记一笔" :show="showAdd" @close="showAdd = false">
+    <Modal :title="editingId ? '编辑账目' : '记一笔'" :show="showAdd" @close="showAdd = false; editingId = ''">
       <div class="capsule" style="padding:4px;gap:4px;margin-bottom:12px">
         <button class="btn ghost" :style="form.type === 'expense' ? 'background:var(--eo-primary);color:#fff' : ''" @click="setType('expense')">支出</button>
         <button class="btn ghost" :style="form.type === 'income' ? 'background:var(--eo-primary);color:#fff' : ''" @click="setType('income')">收入</button>
@@ -342,18 +365,31 @@ const fmtDay = (d) => d.slice(5).replace('-', ' 月 ') + ' 日'
         <button class="btn" @click="addCatMgr"><Icon name="plus" :size="14" /> 添加</button>
       </div>
     </Modal>
+
+    <!-- 模块三：账目详情 + 关联内容（双向绑定 + 画布语义连线） -->
+    <Modal title="账单详情" :show="showDetail" @close="showDetail = false">
+      <div v-if="detailRec" class="rec-detail">
+        <div style="font-weight:800;font-size:16px" :style="{ color: detailRec.type === 'income' ? '#7E9A7E' : '#A97C72' }">
+          {{ detailRec.type === 'income' ? '+' : '-' }}{{ detailRec.amount.toFixed(2) }} 元
+        </div>
+        <div class="muted" style="font-size:12px;margin-top:4px">{{ detailRec.category }}<span v-if="detailRec.note"> · {{ detailRec.note }}</span> · {{ fmtDay(detailRec.date) }}</div>
+      </div>
+      <div v-if="detailRec" class="rel-block">
+        <div class="rel-block-head">
+          <span>关联内容（{{ relatedForDetail.length }}）</span>
+          <button class="chip" @click="openRel('ledger', detailRec.id)"><Icon name="link" :size="14" /> 管理关联</button>
+        </div>
+        <EntityRelationsPanel type="ledger" :id="detailRec.id" />
+        <div v-if="!relatedForDetail.length" class="muted" style="font-size:12px">尚未关联任何实体，点击「管理关联」建立双向关联。</div>
+      </div>
+    </Modal>
+
+    <EntitySearchDialog :source-type="relType" :source-id="relId" :show="relShow" @close="relShow = false" />
   </div>
 </template>
 
 <style scoped>
 .ghost-btn { color: var(--eo-ink-soft); padding: 6px; }
-.ghost-btn-soft {
-  display: inline-flex; align-items: center; gap: 6px; padding: 9px 14px; border-radius: 999px; font-size: 14px; font-weight: 600;
-  color: var(--eo-primary-deep); background: var(--eo-glass); border: 1px solid var(--eo-glass-border);
-  backdrop-filter: blur(16px) saturate(165%); -webkit-backdrop-filter: blur(16px) saturate(165%);
-  box-shadow: inset 0 1px 0 var(--eo-glass-hi); transition: background .15s ease, transform .2s cubic-bezier(.22,1,.36,1);
-}
-.ghost-btn-soft:hover { background: var(--eo-chip); transform: translateY(-1px); }
 /* 环形图 + 趋势图并排（窄屏堆叠） */
 .led-charts { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
 .led-donut { display: flex; align-items: center; gap: 18px; }
@@ -363,26 +399,23 @@ const fmtDay = (d) => d.slice(5).replace('-', ' 月 ') + ' 日'
 .trend-m { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; }
 .trend-bars { display: flex; align-items: flex-end; gap: 3px; height: 120px; }
 .trend-bar { width: 7px; border-radius: 4px 4px 2px 2px; transition: height .3s cubic-bezier(.22,1,.36,1); }
-.trend-bar.inc { background: #34C759; }
-.trend-bar.exp { background: #FF3B30; }
+.trend-bar.inc { background: #7E9A7E; }
+.trend-bar.exp { background: #A97C72; }
 .trend-lab { font-size: 10px; color: var(--eo-ink-soft); }
 .trend-legend { display: flex; gap: 14px; justify-content: flex-end; font-size: 11px; color: var(--eo-ink-soft); margin-top: 6px; }
 .trend-legend .dot { display: inline-block; width: 8px; height: 8px; border-radius: 3px; margin-right: 4px; vertical-align: middle; }
-.trend-legend .dot.inc { background: #34C759; }
-.trend-legend .dot.exp { background: #FF3B30; }
+.trend-legend .dot.inc { background: #7E9A7E; }
+.trend-legend .dot.exp { background: #A97C72; }
 @media (max-width: 640px) { .led-charts { flex-direction: column; align-items: stretch; } .led-donut { justify-content: center; } }
 .led-summary { display: flex; justify-content: center; gap: 30px; text-align: center; padding: 4px 0; }
 .led-summary .led-sum-item { min-width: 78px; }
 /* 账单列表容器：仅在有记录时出现 */
 .led-list { padding: 6px 14px; margin-bottom: 0; }
-/* 空状态：无边框、无分割线，纯留白 + 居中 */
-.led-empty {
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  text-align: center; padding: 34px 18px 30px; margin-top: 2px;
-  border: 0; background: none; box-shadow: none;
-}
-.led-empty .empty-illu { margin-bottom: 10px; }
-.led-empty .es-title { font-weight: 700; font-size: 15px; color: var(--eo-ink); }
-.led-empty .es-sub { font-size: 13px; color: var(--eo-ink-soft); line-height: 1.6; margin-top: 2px; }
-.led-empty .btn { margin-top: 14px; }
+.rec-detail { background: var(--eo-chip); border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; }
+.rel-block { border-top: 1px dashed var(--eo-glass-border); margin-top: 12px; padding-top: 12px; }
+.rel-block-head { display: flex; align-items: center; justify-content: space-between; font-weight: 700; font-size: 13px; margin-bottom: 8px; }
+.rel-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.rel-chip { display: inline-flex; align-items: center; gap: 5px; padding: 5px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--eo-chip); color: var(--eo-ink); }
+.rel-chip.dir-in { background: rgba(44, 44, 44, .16); }
+.rel-dir { font-size: 10px; opacity: .7; }
 </style>

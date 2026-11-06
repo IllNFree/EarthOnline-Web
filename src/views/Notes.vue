@@ -4,8 +4,12 @@ import { useRoute } from 'vue-router'
 import { useAppStore } from '../stores/app.js'
 import { useDialogStore } from '../stores/dialog.js'
 import Icon from '../components/Icon.vue'
+import PageHeader from '../components/PageHeader.vue'
 import MarkdownView from '../components/MarkdownView.vue'
 import EntityPicker from '../components/EntityPicker.vue'
+import EntitySearchDialog from '../components/EntitySearchDialog.vue'
+import EntityRelationsPanel from '../components/EntityRelationsPanel.vue'
+import EmptyState from '../components/EmptyState.vue'
 import Modal from '../components/GlassBottomSheet.vue'
 
 const store = useAppStore()
@@ -20,6 +24,7 @@ onMounted(() => {
 onUnmounted(() => store.setQuickAdd(null))
 const showEdit = ref(false)
 const editing = ref(null)
+const relShow = ref(false)
 // 取消默认分类：类型与标签合并为纯用户自定义标签（需求 #15）
 const form = ref({ id: null, title: '', tags: '', html: '' })
 const editorRef = ref(null)
@@ -63,7 +68,7 @@ function del(id) {
     .then((ok) => { if (ok) { store.deleteMemo(id); store.showToast('已移入回收站') } })
 }
 
-// 需求 4：双向链接编辑层 —— @ 触发全局级联选择器，插入 [@Type:ID] 语法
+// 需求 4：双向链接编辑层 —— @ 触发全局级联选择器，插入 @[Type:ID] 语法
 const showPicker = ref(false)
 let caretRange = null
 function openPicker() {
@@ -75,7 +80,7 @@ function openPicker() {
   showPicker.value = true
 }
 function onPick(entity) {
-  const token = '[@' + entity.type + ':' + entity.id + ']'
+  const token = '@[' + entity.type + ':' + entity.id + ']'
   const el = editorRef.value
   if (el && document.createRange && window.getSelection) {
     el.focus()
@@ -107,13 +112,12 @@ function onEditorInput() {
 
 <template>
   <div class="page wide">
-    <div class="page-head" style="flex-wrap:wrap;gap:10px">
-      <div class="search-bar" style="flex:1;min-width:160px;max-width:320px">
-        <Icon name="search" :size="16" />
-        <input v-model="kw" placeholder="搜索笔记标题 / 标签 / 内容…" />
-      </div>
-      <button class="add-btn" @click="openNew"><Icon name="plus" :size="16" /> 写笔记</button>
-    </div>
+    <PageHeader title="笔记" v-model:query="kw" placeholder="搜索笔记标题 / 标签 / 内容…"
+      :subtitle="`共 ${store.live.memos.length} 篇`">
+      <template #actions>
+        <button class="add-btn" @click="openNew"><Icon name="plus" :size="16" /> 写笔记</button>
+      </template>
+    </PageHeader>
     <div class="cols-2">
     <div v-for="m in shownNotes" :key="m.id" class="glass list-item" @click="openEdit(m)">
       <span class="avatar"><Icon name="note" :size="22" /></span>
@@ -127,12 +131,9 @@ function onEditorInput() {
       <button class="ghost-btn" @click.stop="del(m.id)"><Icon name="trash" :size="16" /></button>
     </div>
     </div>
-    <div v-if="!shownNotes.length" class="glass card empty-state">
-      <span class="empty-illu"><Icon name="note" :size="32" /></span>
-      <div class="es-title">还没有笔记</div>
-      <div class="es-sub">把灵感、复盘、摘抄记下来，人生会更有迹可循。</div>
+    <EmptyState v-if="!shownNotes.length" icon="note" title="还没有笔记" subtitle="把灵感、复盘、摘抄记下来，人生会更有迹可循。">
       <button class="btn" @click="openNew"><Icon name="plus" :size="16" /> 写第一篇笔记</button>
-    </div>
+    </EmptyState>
 
     <Modal title="笔记编辑" :show="showEdit" @close="showEdit = false">
       <div class="field"><label>标题</label><input v-model="form.title" placeholder="标题" /></div>
@@ -145,11 +146,21 @@ function onEditorInput() {
         <button class="chip" @click="openPicker"><Icon name="link" :size="14" /> 关联</button>
       </div>
       <div ref="editorRef" class="eo-editor" contenteditable="true" @input="onEditorInput"></div>
+      <!-- v2.1.0 模块四：统一关联实体（与画布连线同源双向同步） -->
+      <div v-if="form.id" class="rel-block">
+        <div class="rel-block-head">
+          <span>关联实体</span>
+          <button class="chip" @click="relShow = true"><Icon name="link" :size="14" /> 管理关联</button>
+        </div>
+        <EntityRelationsPanel type="memo" :id="form.id" />
+      </div>
       <button class="btn" style="width:100%;margin-top:14px" @click="save"><Icon name="edit" :size="16" /> 保存</button>
     </Modal>
 
+    <EntitySearchDialog source-type="memo" :source-id="form.id || ''" :show="relShow" @close="relShow = false" />
+
     <teleport to="body">
-      <div v-if="showPicker" class="ep-overlay" @click.self="showPicker = false" style="position:fixed;inset:0;z-index:85;display:flex;align-items:center;justify-content:center;background:rgba(28,22,16,.3);backdrop-filter:blur(4px)">
+      <div v-if="showPicker" class="ep-overlay" @click.self="showPicker = false" style="position:fixed;inset:0;z-index:85;display:flex;align-items:center;justify-content:center;background:rgba(28, 28, 27, .3);backdrop-filter:blur(4px)">
         <EntityPicker @select="onPick" @close="showPicker = false" />
       </div>
     </teleport>
@@ -167,7 +178,9 @@ function onEditorInput() {
 <style>
 /* 复选框待办行 / 编辑器（非 scoped：内容由动态 HTML 插入） */
 .eo-todo { margin: 4px 0; }
+.rel-block { border-top: 1px dashed var(--eo-glass-border); margin-top: 12px; padding-top: 12px; }
+.rel-block-head { display: flex; align-items: center; justify-content: space-between; font-weight: 700; font-size: 13px; margin-bottom: 8px; }
 .eo-todo label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
-.eo-todo input[type='checkbox'] { width: 17px; height: 17px; accent-color: #D4A373; cursor: pointer; }
+.eo-todo input[type='checkbox'] { width: 17px; height: 17px; accent-color: #2C2C2C; cursor: pointer; }
 .eo-editor { min-height: 160px; border: 1px solid var(--eo-glass-border); border-radius: 14px; padding: 12px; background: var(--eo-glass); font-size: 15px; outline: none; }
 </style>

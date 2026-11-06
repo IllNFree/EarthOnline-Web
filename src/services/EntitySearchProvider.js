@@ -5,6 +5,18 @@ import { BI_LINK_TYPES } from '../lib/bilink.js'
 function norm(s) { return String(s || '').toLowerCase() }
 
 /**
+ * 取记账记录数组。
+ * ⚠️ 记账在 state 里是对象容器 { records: [], expenseCategories: [], incomeCategories: [] }，
+ * 不是数组 —— 早期误按数组处理导致 `(state.ledger || []).filter is not a function` 抛错。
+ */
+function ledgerRecords(state) {
+  const l = state && state.ledger
+  if (Array.isArray(l)) return l
+  if (l && Array.isArray(l.records)) return l.records
+  return []
+}
+
+/**
  * 跨实体检索（笔记/任务/背包/收藏/相册/足迹/记账）。
  * @param {Object} state store.data
  * @param {String} query 关键词
@@ -36,6 +48,7 @@ export function searchEntities(state, query, filterTypes) {
     push('collection', (state.collections || []).filter((x) => !x.deletedAt))
     push('photo', (state.photos || []).filter((x) => !x.deletedAt))
     push('location', (state.locations || []).filter((x) => !x.deletedAt))
+    push('ledger', ledgerRecords(state).filter((x) => !x.deletedAt))
   }
   return out.slice(0, 30)
 }
@@ -48,7 +61,8 @@ export function listEntitiesByType(state, type) {
     item: (state.items || []).filter((x) => !x.deletedAt).map((x) => ({ type, id: x.id, title: x.name, sub: x.category, icon: 'backpack' })),
     collection: (state.collections || []).filter((x) => !x.deletedAt).map((x) => ({ type, id: x.id, title: x.title, sub: x.category, icon: 'star' })),
     photo: (state.photos || []).filter((x) => !x.deletedAt).map((x) => ({ type, id: x.id, title: x.name, sub: x.category, icon: 'image' })),
-    location: (state.locations || []).filter((x) => !x.deletedAt).map((x) => ({ type, id: x.id, title: x.name, sub: x.date, icon: 'map-pin' }))
+    location: (state.locations || []).filter((x) => !x.deletedAt).map((x) => ({ type, id: x.id, title: x.name, sub: x.date, icon: 'map-pin' })),
+    ledger: ledgerRecords(state).filter((x) => !x.deletedAt).map((x) => ({ type, id: x.id, title: (x.type === 'income' ? '收入 ' : '支出 ') + x.amount + ' 元', sub: x.category, icon: 'wallet' }))
   }
   return map[type] || []
 }

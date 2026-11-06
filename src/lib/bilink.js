@@ -11,7 +11,7 @@ export const BI_LINK_TYPES = {
   ledger: { label: '记账', icon: 'wallet', route: '/ledger' }
 }
 const TYPES = Object.keys(BI_LINK_TYPES).join('|')
-const RE = new RegExp('\\[@(' + TYPES + '):([\\w\\-]+)\\]', 'g')
+const RE = new RegExp(`@\\[(${TYPES}):([\\w-]+)\\]`, 'g')
 
 /** 将文本切分为「普通文本段」与「链接段」序列，供渲染层逐段渲染 */
 export function tokenizeBiLinks(text) {

@@ -23,3 +23,9 @@ export function canvasEnsureNode(type, id, opts) {
 export function canvasFocus(node) {
   if (typeof handlers.focusNode === 'function') handlers.focusNode(node)
 }
+
+// 模块四：跨页实体聚焦 —— 详情页点击关联标签时，先记录待聚焦实体，再跳回画布，
+// 画布挂载后消费该记录并定位到对应节点（不存在则自动创建）。
+let pendingFocus = null
+export function requestCanvasFocus(type, id) { pendingFocus = { type, id } }
+export function consumeCanvasFocus() { const p = pendingFocus; pendingFocus = null; return p }
