@@ -1,12 +1,16 @@
 # 地球Online · Web
 
-![Platform](https://img.shields.io/badge/platform-Web-PWA-blue) ![Version](https://img.shields.io/badge/version-v2.0.0-orange) ![License](https://img.shields.io/badge/license-MIT-green)
+![Platform](https://img.shields.io/badge/platform-Web-PWA-blue) ![Version](https://img.shields.io/badge/version-v3.0.0-orange) ![License](https://img.shields.io/badge/license-MIT-green)
 
 同名应用的网页端，离线优先 PWA，数据存于本机 IndexedDB。
 
+## 在线访问
+
+👉 **[https://illnfree.github.io/EarthOnline-Web/](https://illnfree.github.io/EarthOnline-Web/)**（点击直接打开，无需登录）
+
 ## 当前状态
 
-活跃开发（v2.0.0，封板日期 2026-10-26）。
+活跃开发（v3.0.0，封板日期 2026-11-06）。
 
 ## 技术栈
 
