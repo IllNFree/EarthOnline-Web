@@ -1,6 +1,6 @@
 // ===== 成就系统（canonical + Web 彩蛋交叉键） =====
 // 字段 key:'...' 与三端契约 check_achievements.js 的 web.files 正则一致。
-// 已移除 XP 设定：成就只保留「是否解锁」与稀有度，不再换算经验值。
+// 已移除 XP 与等级设定：成就只保留「是否解锁」与进度，不再换算经验值。
 import { todayStr } from './model.js'
 
 export const ACHIEVEMENTS = [
@@ -84,60 +84,11 @@ ACHIEVEMENTS.forEach((a) => { if (a.icon === 'egg') a.secret = true })
 
 const BY_KEY = Object.fromEntries(ACHIEVEMENTS.map((a) => [a.key, a]))
 
-// 稀有度：显式登记（缺省 common），仅用于成就页徽标与弹窗光效/音效档位
-const RARITY = {
-  grand_slam: 'legendary',
-  hundred_tasks: 'legendary',
-  fifty_items: 'legendary',
-  fifty_collections: 'legendary',
-  notes_hundred: 'legendary',
-  day_1000: 'legendary',
-  day_5000: 'legendary',
-  day_10000: 'legendary',
-  egg_streak_365: 'legendary',
-  walmart_egg: 'legendary',
-  thirty_tasks: 'epic',
-  fifty_tasks: 'epic',
-  ten_items: 'epic',
-  ten_collections: 'epic',
-  twenty_locations: 'epic',
-  fifty_memos: 'epic',
-  day_365: 'epic',
-  all_rounder: 'epic',
-  egg_streak_30: 'epic',
-  web_whiteboard_ten: 'epic',
-  web_bilink_ten: 'epic',
-  web_space_first: 'epic',
-  web_space_five: 'epic',
-  web_crossspace_first: 'epic',
-  five_tasks: 'rare',
-  ten_tasks: 'rare',
-  ten_memos: 'rare',
-  five_locations: 'rare',
-  five_star: 'rare',
-  memo_long: 'rare',
-  day_100: 'rare',
-  glass_tuner: 'rare',
-  egg_streak_7: 'rare',
-  web_whiteboard_first: 'rare',
-  web_bilink_first: 'rare',
-  web_ai_chat: 'rare',
-  web_tool_call: 'rare',
-  web_import_data: 'rare',
-  web_drag_upload: 'rare',
-  web_period_report: 'rare',
-  web_ai_card: 'rare',
-  web_ai_summary: 'rare',
-  web_group_first: 'rare'
-}
-
-export function achievementRarity(key) {
-  return RARITY[key] || 'common'
-}
+// 等级（稀有度）设定已取消：成就只保留「是否解锁」与进度，光效 / 音效 / 反馈统一沿用。
 function meta(key) {
   const a = BY_KEY[key]
-  if (!a) return { key, title: key, desc: '', icon: 'star', rarity: 'common' }
-  return { key: a.key, title: a.title, desc: a.desc, icon: a.icon || 'star', rarity: achievementRarity(key) }
+  if (!a) return { key, title: key, desc: '', icon: 'star' }
+  return { key: a.key, title: a.title, desc: a.desc, icon: a.icon || 'star' }
 }
 
 // ---------- 通用统计 ----------

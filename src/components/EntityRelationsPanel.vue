@@ -1,9 +1,9 @@
 <script setup>
 // ===== v2.1.0 模块四：统一关联面板（含反向索引「被哪些实体引用」）=====
-// 全应用复用：详情页底部直接挂载，自动展示出向 / 入向关联，点击可跳转。
+// v3.0.2：关联 chip 改为就地打开实体预览弹窗，不再 router.push 跳功能列表页。
 import { computed } from 'vue'
-import { useRouter } from 'vue-router'
 import { useAppStore } from '../stores/app.js'
+import { usePreview } from '../stores/preview.js'
 import { BI_LINK_TYPES } from '../lib/bilink.js'
 import Icon from './Icon.vue'
 
@@ -13,16 +13,13 @@ const props = defineProps({
   hideOutgoing: { type: Boolean, default: false }
 })
 const store = useAppStore()
-const router = useRouter()
+const { open } = usePreview()
 
 const rels = computed(() => store.relatedEntitiesFor(props.type, props.id))
 const outgoing = computed(() => rels.value.filter((r) => r.dir === 'out'))
 const incoming = computed(() => rels.value.filter((r) => r.dir === 'in'))
 
-function go(r) {
-  const route = (BI_LINK_TYPES[r.type] || {}).route
-  if (route) router.push(route)
-}
+function go(r) { open(r.type, r.id) }
 </script>
 
 <template>

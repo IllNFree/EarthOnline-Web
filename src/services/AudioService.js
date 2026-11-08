@@ -1,6 +1,6 @@
 // ===== 沉浸式成就音效服务（模块五）=====
-// 使用 howler.js 封装全局 AudioService，预加载 普通 / 稀有 / 传说 三档音效。
-// 由于项目零外部资源红线，三档音效用 WebAudio 合成正弦波后编码为 WAV dataURI 供 Howler 播放，
+// 使用 howler.js 封装全局 AudioService。成就等级已取消，统一为同一档解锁音效。
+// 由于项目零外部资源红线，音效用 WebAudio 合成正弦波后编码为 WAV dataURI 供 Howler 播放，
 // 不依赖任何二进制音频文件；若后续要替换为真实音效，仅需改 TIERS[*].url 即可。
 import { Howl, Howler } from 'howler'
 
@@ -55,19 +55,10 @@ function encodeWav(samples) {
   return 'data:audio/wav;base64,' + btoa(bin)
 }
 
-// 三档音效：普通（单音）/ 稀有（双音上行）/ 传说（三音琶音带光晕）
+// 统一音效（无 WebAudio 时的回退）：双音上行
 const TIERS = {
-  common: { src: [encodeWav(toneSamples(523.25, 0.18, 0.4))] },
-  rare: { src: [encodeWav(concat(toneSamples(523.25, 0.12, 0.4), toneSamples(783.99, 0.16, 0.4)))] },
-  legendary: {
-    src: [encodeWav(concat(
-      toneSamples(523.25, 0.1, 0.38),
-      toneSamples(659.25, 0.1, 0.38),
-      toneSamples(1046.5, 0.22, 0.42)
-    ))]
-  }
+  common: { src: [encodeWav(concat(toneSamples(523.25, 0.12, 0.4), toneSamples(783.99, 0.16, 0.4)))] }
 }
-const RARITY_TIER = { common: 'common', rare: 'rare', epic: 'rare', legendary: 'legendary' }
 
 let loaded = false
 const pool = {}
@@ -98,8 +89,8 @@ export const AudioService = {
       if (Howler._autoUnlock && Howler._autoUnlock()) { /* 已触发自动解锁 */ }
     } catch (e) {}
   },
-  /** 播放指定稀有度的音效；静音或上下文不可用时静默失败 */
-  play(rarity) {
+  /** 播放成就解锁音效；静音或上下文不可用时静默失败 */
+  play() {
     const store = globalThis.__EO_STORE__
     const muted = store && store.data && store.data.achievementSoundMuted
     if (muted) return
@@ -108,12 +99,11 @@ export const AudioService = {
       const ctx = getCtx()
       if (ctx && ctx.createOscillator) {
         if (ctx.state === 'suspended' && ctx.resume) ctx.resume()
-        chime(ctx, rarity)
+        chime(ctx)
         return
       }
       // 无 WebAudio（极老浏览器）时回退到 Howler 预生成音
-      const tier = RARITY_TIER[rarity] || 'common'
-      const h = pool[tier]
+      const h = pool.common
       if (h) h.play()
     } catch (e) {}
   },
@@ -138,15 +128,9 @@ function getCtx() {
 }
 
 // 成就音效：WebAudio 实时合成「钟琴双音」，比预生成 WAV 更响、更长、更清晰
-// （三音琶音给传说级；每个音带一层倍频泛音，衰减约 0.6s）
-function chime(ctx, rarity) {
-  const NOTES = {
-    common: [659.25, 880],
-    rare: [659.25, 987.77],
-    epic: [587.33, 880, 1174.66],
-    legendary: [523.25, 659.25, 880, 1046.5]
-  }
-  const notes = NOTES[rarity] || NOTES.common
+// （每个音带一层倍频泛音，衰减约 0.6s）
+function chime(ctx) {
+  const notes = [659.25, 880]
   const t0 = ctx.currentTime + 0.02
   const gap = 0.16
   const dur = 0.62

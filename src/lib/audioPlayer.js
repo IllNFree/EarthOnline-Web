@@ -7,14 +7,21 @@ import { createPlayer } from 'makenoise'
 
 let player = null
 
+function savedVolume() {
+  try {
+    const v = Number(localStorage.getItem('eo:music_volume'))
+    return Number.isFinite(v) && v >= 0 && v <= 1 ? v : 0.6
+  } catch (e) { return 0.6 }
+}
+
 export function getCanvasPlayer() {
   if (!player) {
     player = createPlayer({
-      volume: 0.6,
+      volume: savedVolume(),
       progressInterval: 200,
-      // 画布内可能有多个唱片卡，交给浏览器媒体控制反而突兀 → 关闭
-      mediaSession: false,
-      repeat: 'one'
+      // 系统媒体控制（锁屏 / 耳机键）由歌曲信息驱动；画布内切歌时元数据会跟着更新
+      mediaSession: true,
+      repeat: 'all'
     })
   }
   return player

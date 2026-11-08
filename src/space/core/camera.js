@@ -8,12 +8,6 @@ export const MAX_SCALE = 3.2
 export function clampScale(s) {
   return Math.min(MAX_SCALE, Math.max(MIN_SCALE, s))
 }
-// 滚轮 / 按钮缩放吸附到 0.05 档位：避免长期停在 0.63、0.77 这类非整刻度上，
-// DOM 卡片整体 scale 分数阶时文字会被位图重采样 → 看起来「有时模糊」。
-export function snapScale(s) {
-  const q = Math.round(s * 20) / 20
-  return clampScale(q > 0 ? q : s)
-}
 
 export function screenToWorld(cam, sx, sy, vw, vh) {
   return {
@@ -37,7 +31,10 @@ export function visibleWorldRect(cam, vw, vh, pad = 0) {
 
 // 以屏幕某点为中心缩放（滚轮 / 双击 / 按钮都用它）
 export function zoomAt(cam, factor, sx, sy, vw, vh) {
-  const next = snapScale(cam.s * factor)
+  // 连续缩放：滚轮/触控板每帧按 factor 实乘，不在这里吸附到 0.05 档。
+  // 早前在每次事件里吸附，会在 0.20 这类档位形成死区——触控板小步长（deltaY≈30）
+  // 乘完后仍落回同一档，缩放看起来完全失效。吸附改到滚轮停止后做一次。
+  const next = clampScale(cam.s * factor)
   if (next === cam.s) return cam
   const p = screenToWorld(cam, sx, sy, vw, vh)
   return {

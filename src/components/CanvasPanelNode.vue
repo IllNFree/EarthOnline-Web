@@ -151,10 +151,7 @@ function editCurrentNote() { if (currentNote.value) openMemoEditor(currentNote.v
 
 // ---------- 相册：瀑布流 + 大图查看 ----------
 const albumAll = computed(() => store.live.photos.slice().sort((a, b) => ((a.createdAt || '') < (b.createdAt || '') ? 1 : -1)))
-const album = computed(() => {
-  const max = sizeClass.value === 'sz-xs' ? 3 : (sizeClass.value === 'sz-lg' ? 14 : 8)
-  return { total: albumAll.value.length, shots: albumAll.value.slice(0, max) }
-})
+const album = computed(() => ({ total: albumAll.value.length, shots: albumAll.value }))
 const photoView = reactive({ open: false, index: 0 })
 const photoNow = computed(() => albumAll.value[photoView.index] || null)
 function openPhoto(p) {
@@ -219,7 +216,7 @@ const DEFAULT_POS = { lat: 39.9042, lon: 116.4074, city: '北京（默认）' }
 const wx = reactive({
   state: 'idle', temp: null, code: 0, city: '', days: [], hourly: [], at: 0, err: '', locating: false,
   humidity: null, wind: null, apparent: null, windDir: null, pressure: null, precip: null,
-  sunrise: '', sunset: '', lat: null, lon: null
+  sunrise: '', sunset: '', lat: null, lon: null, aqi: null
 })
 const wxSheet = reactive({ open: false })
 
@@ -246,6 +243,7 @@ function applyWx(o) {
   wx.precip = typeof o.precip === 'number' ? o.precip : null
   wx.sunrise = o.sunrise || ''
   wx.sunset = o.sunset || ''
+  wx.aqi = typeof o.aqi === 'number' ? o.aqi : null
   wx.at = o.at || Date.now()
   wx.err = ''
 }
@@ -346,9 +344,20 @@ async function loadWeather(force = false) {
       + '&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,surface_pressure'
       + '&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,precipitation_sum'
       + '&hourly=temperature_2m,weather_code&timezone=auto&forecast_days=7'
-    const r = await fetch(url)
+    const aqUrl = 'https://air-quality-api.open-meteo.com/v1/air-quality?latitude=' + spot.lat + '&longitude=' + spot.lon
+      + '&current=us_aqi&timezone=auto'
+    // 天气与空气质量并行请求：AQI 失败不影响天气主流程
+    const [r, aqRes] = await Promise.all([fetch(url), fetch(aqUrl).catch(() => null)])
     if (!r.ok) throw new Error('HTTP ' + r.status)
     const j = await r.json()
+    let aqi = null
+    if (aqRes && aqRes.ok) {
+      try {
+        const aq = await aqRes.json()
+        const v = aq && aq.current && aq.current.us_aqi
+        if (Number.isFinite(v)) aqi = Math.round(v)
+      } catch (e) { /* AQI 解析失败时留空 */ }
+    }
     const cur = j.current || {}
     const daily = j.daily || {}
     const WDF = ['日', '一', '二', '三', '四', '五', '六']
@@ -381,7 +390,7 @@ async function loadWeather(force = false) {
       precip: Number.isFinite((daily.precipitation_sum || [])[0]) ? (daily.precipitation_sum || [])[0] : null,
       sunrise: String((daily.sunrise || [])[0] || '').slice(11, 16),
       sunset: String((daily.sunset || [])[0] || '').slice(11, 16),
-      city, days, hourly: hourlyList, lat: spot.lat, lon: spot.lon, manual: !!manual
+      city, days, hourly: hourlyList, lat: spot.lat, lon: spot.lon, manual: !!manual, aqi
     }
     applyWx(payload)
     try { localStorage.setItem(WEATHER_KEY, JSON.stringify(payload)) } catch (e) { /* 隐私模式忽略 */ }
@@ -440,6 +449,28 @@ const wxHourLine = computed(() => {
     const y = 34 - ((Number(h.temp) - lo) / span) * 22
     return x.toFixed(1) + ',' + y.toFixed(1)
   }).join(' ')
+})
+// ---------- 正面 5 日高低温曲线（沿用卡片现有冷暖色） ----------
+const wxTrendDays = computed(() => (wx.days || []).slice(0, 5))
+const wxTrend = computed(() => {
+  const days = wxTrendDays.value
+  const empty = { hi: '', lo: '' }
+  if (!days.length) return empty
+  const vals = days.flatMap((d) => [d.hi, d.lo]).filter((v) => Number.isFinite(v))
+  if (!vals.length) return empty
+  const lo = Math.min(...vals)
+  const hi = Math.max(...vals)
+  const span = Math.max(1, hi - lo)
+  const step = days.length > 1 ? 88 / (days.length - 1) : 0
+  const yOf = (v) => 30 - ((v - lo) / span) * 24
+  const pts = (key) => days.map((d, i) => (6 + i * step).toFixed(1) + ',' + yOf(d[key]).toFixed(1)).join(' ')
+  return { hi: pts('hi'), lo: pts('lo') }
+})
+const wxAqiLabel = computed(() => {
+  if (wx.aqi === null) return '--'
+  const v = Number(wx.aqi)
+  const lv = v <= 50 ? '优' : v <= 100 ? '良' : v <= 150 ? '轻度' : v <= 200 ? '中度' : v <= 300 ? '重度' : '严重'
+  return v + ' · ' + lv
 })
 const wxStamp = computed(() => {
   if (!wx.at) return ''
@@ -947,14 +978,13 @@ const meta = computed(() => PANEL_META[props.kind] || PANEL_META.backpack)
 </script>
 
 <template>
-  <div class="pn" ref="rootEl" :class="[sizeClass, { short: isShort }]">
-    <div class="pn-head">
+  <div class="pn" ref="rootEl" :class="[sizeClass, { short: isShort, 'pn-full': kind === 'weather' }]">
+    <div v-if="kind !== 'weather'" class="pn-head">
       <Icon :name="meta.icon" :size="sizeClass === 'sz-xs' ? 14 : 16" />
       <span class="pn-title">{{ meta.label }}</span>
       <!-- 笔记：新建入口直接开浮层编辑器 -->
       <button v-if="kind === 'notes'" class="pn-refresh" title="新建笔记" @pointerdown.stop @click.stop="openMemoEditor(null)"><Icon name="plus" :size="16" /></button>
-      <button v-if="kind === 'weather'" class="pn-refresh" title="刷新天气" @pointerdown.stop @click.stop="loadWeather(true)"><Icon name="reset" :size="16" /></button>
-      <button v-else class="pn-refresh" title="刷新数据" @pointerdown.stop @click.stop="refreshData()"><Icon name="reset" :size="16" /></button>
+      <button class="pn-refresh" title="刷新数据" @pointerdown.stop @click.stop="refreshData()"><Icon name="reset" :size="16" /></button>
     </div>
 
     <!-- 背包统计：总数环 + 彩色分类条 + 最近物品徽章 -->
@@ -1028,8 +1058,8 @@ const meta = computed(() => PANEL_META[props.kind] || PANEL_META.backpack)
       </template>
     </div>
 
-    <!-- 相册：瀑布流 + 大图 -->
-    <div v-else-if="kind === 'album'" class="pn-body" data-scroll>
+    <!-- 相册：瀑布流 + 大图（全部照片，面板内可滚动；wheel 阻止冒泡到画布缩放） -->
+    <div v-else-if="kind === 'album'" class="pn-body" data-scroll @wheel.stop>
       <div v-if="album.total" class="pn-big">{{ album.total }}<span class="pn-unit">张回忆</span></div>
       <div v-if="album.total" class="pn-photo-flow">
         <button v-for="p in album.shots" :key="p.id" class="pn-photo" :title="p.name" @pointerdown.stop @click.stop="openPhoto(p)">
@@ -1103,6 +1133,7 @@ const meta = computed(() => PANEL_META[props.kind] || PANEL_META.backpack)
               <span>{{ wx.city }}</span>
             </span>
             <span class="wx-hint">详情<Icon name="chevron-right" :size="11" /></span>
+            <button class="wx-refresh" title="刷新天气" @pointerdown.stop @click.stop="loadWeather(true)"><Icon name="reset" :size="12" /></button>
           </div>
 
           <div class="wx-card-main">
@@ -1113,18 +1144,31 @@ const meta = computed(() => PANEL_META[props.kind] || PANEL_META.backpack)
             </span>
           </div>
 
-          <div class="wx6">
-            <div v-for="d in wx.days.slice(1, 7)" :key="d.k" class="wx6-col">
-              <span class="wx6-k">{{ d.k }}</span>
-              <svg class="wx6-ico" aria-hidden="true"><use :href="wxIconId(d.code)" /></svg>
-              <span class="wx6-t">{{ d.lo }}~{{ d.hi }}</span>
+          <!-- 体感 / 湿度 / 空气质量 / 风：正面即可读，点击仍可展开完整详情 -->
+          <div class="wx-metrics">
+            <span><i>体感</i><b>{{ wx.apparent === null ? '--' : wx.apparent + '°' }}</b></span>
+            <span><i>湿度</i><b>{{ wx.humidity === null ? '--' : wx.humidity + '%' }}</b></span>
+            <span><i>AQI</i><b>{{ wxAqiLabel }}</b></span>
+            <span><i>{{ windDirName }}</i><b>{{ windLevel }} 级</b></span>
+          </div>
+          <div class="wx-trend">
+            <svg class="wx-trend-line" viewBox="0 0 100 34" preserveAspectRatio="none" aria-hidden="true">
+              <polyline class="hi" :points="wxTrend.hi" />
+              <polyline class="lo" :points="wxTrend.lo" />
+            </svg>
+            <div class="wx-trend-x">
+              <span v-for="d in wxTrendDays" :key="d.k">
+                <i>{{ d.k }}</i>
+                <b>{{ d.hi }}°</b>
+                <em>{{ d.lo }}°</em>
+              </span>
             </div>
           </div>
           <div class="wx-foot">{{ wxFetched }}</div>
         </div>
       </template>
       <template v-else-if="wx.state === 'loading'">
-        <div class="wx-loading">
+        <div class="wx-loading wx-state">
           <svg viewBox="0 0 64 40" aria-hidden="true" class="wx-loading-art">
             <path class="wx-cloud" d="M16 34h30a9 9 0 0 0 1-18A13 13 0 0 0 18 18 8.5 8.5 0 0 0 16 34z" />
           </svg>
@@ -1132,7 +1176,7 @@ const meta = computed(() => PANEL_META[props.kind] || PANEL_META.backpack)
         </div>
       </template>
       <template v-else>
-        <div class="wx-loading">
+        <div class="wx-loading wx-state">
           <Icon name="cloud" :size="24" />
           <div>{{ wx.err || '天气不可用，点右上角刷新' }}</div>
         </div>
@@ -1575,7 +1619,7 @@ const meta = computed(() => PANEL_META[props.kind] || PANEL_META.backpack)
       </GlassBottomSheet>
 
       <!-- 天气详情（点击天气卡打开） -->
-      <GlassBottomSheet :show="wxSheet.open" title="天气详情" @close="wxSheet.open = false">
+      <GlassBottomSheet :show="wxSheet.open" title="天气详情" drawer @close="wxSheet.open = false">
         <div v-if="wx.state === 'ok'" class="wxsheet">
           <div class="wxs-top">
             <div class="wxs-city">{{ wx.city }}<span class="wxs-mode">{{ manualCity ? '手动' : '自动定位' }}</span></div>
@@ -1607,6 +1651,7 @@ const meta = computed(() => PANEL_META[props.kind] || PANEL_META.backpack)
           <div class="wxs-metrics">
             <span><i>温度</i><b>{{ wx.days[0] ? wx.days[0].lo : '--' }}°~{{ wx.days[0] ? wx.days[0].hi : '--' }}°</b></span>
             <span><i>湿度</i><b>{{ wx.humidity === null ? '--' : wx.humidity }}%</b></span>
+            <span><i>空气质量</i><b>{{ wxAqiLabel }}</b></span>
             <span><i>气压</i><b>{{ wx.pressure === null ? '--' : wx.pressure }} hPa</b></span>
             <span><i>降水</i><b>{{ wx.precip === null ? '--' : wx.precip }} mm</b></span>
             <span><i>日出</i><b>{{ wx.sunrise || '--' }}</b></span>
@@ -1690,7 +1735,10 @@ const meta = computed(() => PANEL_META[props.kind] || PANEL_META.backpack)
 .pn-mapbtn.on { background: var(--accent, #E2A94F); border-color: transparent; color: #fff; }
 .pn.is-mmap { box-shadow: inset 0 0 0 2px var(--accent, #E2A94F); border-radius: 12px; }
 .pn-body { flex: 1; min-height: 0; margin-top: 4px; overflow-y: auto; overscroll-behavior: contain; }
+/* 天气整卡：隐藏外层标题栏后，深色卡直接铺满节点，不留玻璃内边距 */
+.pn-full { padding: 0; }
 .pn.sz-xs .pn-body { margin-top: 2px; }
+.pn.pn-full .pn-body { margin-top: 0; }
 .pn-big { font-size: clamp(15px, min(6.2cqw, 7.4cqh), 28px); font-weight: 800; line-height: 1.05; color: var(--pn-ink, #2C2C2C); display: flex; align-items: baseline; gap: 4px; flex-wrap: wrap; }
 .pn-big.sm { font-size: clamp(13px, min(5cqw, 6cqh), 22px); }
 .pn-big .pos { color: var(--pn-ink-2, #9E9C97); }
@@ -2514,16 +2562,29 @@ const meta = computed(() => PANEL_META[props.kind] || PANEL_META.backpack)
 .pn-wx { display: block; height: 100%; }
 .wx-card {
   position: relative; height: 100%; min-height: 0; display: flex; flex-direction: column; overflow: hidden;
-  padding: clamp(7px, 3cqw, 14px) clamp(8px, 3.2cqw, 16px); border-radius: 16px; color: #EDEDF0;
+  padding: clamp(10px, 3.4cqw, 18px) clamp(11px, 3.6cqw, 20px); border-radius: 16px; color: #EDEDF0;
   background: rgba(38, 38, 42, .74); border: 1px solid rgba(255, 255, 255, .08);
   backdrop-filter: blur(14px) saturate(1.08);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06), 0 10px 24px -18px rgba(0, 0, 0, .9);
   cursor: pointer;
 }
+/* 无外层玻璃时的深色表面：加载 / 失败态与整卡同底色 */
+.wx-state {
+  border-radius: 16px; background: rgba(38, 38, 42, .74);
+  border: 1px solid rgba(255, 255, 255, .08);
+  backdrop-filter: blur(14px) saturate(1.08);
+}
 .wx-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
 .wx-card-top { flex: none; display: flex; align-items: center; gap: 6px; }
 .wx-card .wx-city { opacity: .84; font-size: clamp(9px, 2.5cqw, 12px); }
 .wx-hint { margin-left: auto; display: inline-flex; align-items: center; gap: 1px; font-size: clamp(8px, 2cqw, 10px); opacity: .5; }
+.wx-refresh {
+  flex: none; width: clamp(16px, 5cqw, 22px); height: clamp(16px, 5cqw, 22px);
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 0; border-radius: 50%; background: rgba(255, 255, 255, .08); color: #EDEDF0;
+  opacity: .62; cursor: pointer; transition: opacity .14s ease, background .14s ease;
+}
+.wx-refresh:hover { opacity: .95; background: rgba(255, 255, 255, .16); }
 .wx-card-main { flex: none; display: flex; align-items: flex-start; gap: 8px; margin-top: clamp(2px, 1cqh, 6px); }
 .wx-big {
   font-size: clamp(26px, 18cqw, 62px); font-weight: 700; line-height: 1.02;
@@ -2534,18 +2595,36 @@ const meta = computed(() => PANEL_META[props.kind] || PANEL_META.backpack)
 .wx-cond { display: inline-flex; align-items: center; gap: 4px; font-size: clamp(9.5px, 2.7cqw, 12px); font-weight: 700; }
 .wx-ico { flex: none; width: clamp(16px, 5.4cqw, 22px); height: clamp(16px, 5.4cqw, 22px); }
 .wx-hl { font-size: clamp(8px, 2.2cqw, 10px); opacity: .6; white-space: nowrap; }
-.wx6 {
-  flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: clamp(2px, 1cqw, 6px); align-items: center; margin-top: clamp(3px, 1.4cqh, 8px);
+/* 正面指标：体感 / 湿度 / AQI / 风 */
+.wx-metrics {
+  flex: none; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: clamp(2px, 1cqw, 6px); margin-top: clamp(3px, 1.4cqh, 8px);
 }
-.wx6-col {
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: clamp(1px, .5cqh, 3px); min-width: 0; padding: clamp(2px, 1cqh, 5px) 0;
-  border-radius: 8px; background: rgba(255, 255, 255, .05);
+.wx-metrics > span {
+  display: flex; flex-direction: column; gap: 1px; min-width: 0;
+  padding: clamp(2px, 1cqh, 5px) clamp(3px, 1.2cqw, 7px); border-radius: 8px;
+  background: rgba(255, 255, 255, .05);
 }
-.wx6-k { font-size: clamp(7.5px, 2cqw, 9.5px); opacity: .62; white-space: nowrap; }
-.wx6-ico { width: clamp(14px, 4.8cqw, 20px); height: clamp(14px, 4.8cqw, 20px); }
-.wx6-t { font-size: clamp(8px, 2.2cqw, 10px); font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.wx-metrics i {
+  font-style: normal; font-size: clamp(7px, 2cqw, 9px); opacity: .5;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.wx-metrics b {
+  font-size: clamp(8px, 2.3cqw, 10.5px); font-weight: 700;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+/* 5 日高低温曲线（暖色高线 / 冷色低线，匹配天气图标配色） */
+.wx-trend { flex: 1; min-height: 0; display: flex; flex-direction: column; margin-top: clamp(3px, 1.4cqh, 8px); }
+.wx-trend-line { flex: 1; width: 100%; min-height: 0; }
+.wx-trend-line polyline { fill: none; stroke-width: 1.4; vector-effect: non-scaling-stroke; stroke-linecap: round; stroke-linejoin: round; }
+.wx-trend-line .hi { stroke: #F0B45E; }
+.wx-trend-line .lo { stroke: #7FB0D8; }
+.wx-trend-x { flex: none; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); padding-top: 1px; }
+.wx-trend-x span { display: flex; flex-direction: column; align-items: center; min-width: 0; line-height: 1.15; }
+.wx-trend-x i { font-style: normal; font-size: clamp(7px, 1.9cqw, 9px); opacity: .5; white-space: nowrap; }
+.wx-trend-x b { font-size: clamp(7.5px, 2.1cqw, 9.5px); font-weight: 800; color: #F0C58B; font-variant-numeric: tabular-nums; }
+.wx-trend-x em { font-style: normal; font-size: clamp(7px, 1.9cqw, 9px); color: #9FC4DD; font-variant-numeric: tabular-nums; }
 .wx-foot { flex: none; margin-top: 3px; text-align: right; font-size: clamp(7px, 1.9cqw, 9px); opacity: .36; }
 .pn-wx .wx-loading { height: 100%; color: #D9D9DC; }
 

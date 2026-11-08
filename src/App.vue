@@ -12,6 +12,7 @@ import Icon from './components/Icon.vue'
 import GlassDialog from './components/GlassDialog.vue'
 import GlobalContextMenu from './components/GlobalContextMenu.vue'
 import { openContextMenu } from './composables/useContextMenu.js'
+import { getCanvasPlayer } from './lib/audioPlayer.js'
 import GlobalDragOverlay from './components/GlobalDragOverlay.vue'
 import HazeToast from './components/HazeToast.vue'
 import AchievementToast from './components/AchievementToast.vue'
@@ -20,8 +21,13 @@ import { useWebDAVSync } from './composables/useWebDAVSync.js'
 import { useGlobalDropZone } from './composables/useGlobalDropZone.js'
 import { useClipboardWatcher } from './composables/useClipboardWatcher.js'
 import { useNotificationService } from './composables/useNotificationService.js'
+import EntityPreviewDialog from './components/EntityPreviewDialog.vue'
+import ws from './space/spaceInstance.js'
+import { startEntityLinkBridge } from './space/core/entityRefs.js'
 
 const store = useAppStore()
+// 画布连线 ↔ 功能关联（biLinks）双向桥接：全局只启动一次
+startEntityLinkBridge(ws, store)
 const dialog = useDialogStore()
 const route = useRoute()
 const router = useRouter()
@@ -200,12 +206,135 @@ let escHandler = null
 
 // 模块四：全局右键菜单 —— 监听 contextmenu，构建差异化菜单并交给 useContextMenu 渲染。
 // 红线：enableCustomContextMenu 关闭时 openContextMenu 内部直接 return 不拦截 → 原生菜单放行。
-function buildContextItems(el) {
-  const items = [
-    { icon: 'tasks', label: '新建任务', action: () => routerPush('/tasks') },
-    { icon: 'note', label: '写笔记', action: () => routerPush('/notes') },
-    { icon: 'wallet', label: '记一笔', action: () => routerPush('/ledger') }
+
+// ---------- 页面级右键菜单（导航型：只列当前页面真正相关的入口） ----------
+// 每页用独立函数返回数组，避免共享对象被后续 data-ctx 追加污染。
+const ctxGo = (icon, label, path) => ({ icon, label, action: () => routerPush(path) })
+// 当前页已注册 quickAdd（新建任务/写笔记/加照片/记一笔）时直接内联执行，不跳同页
+function ctxQuickAdd(icon, label) {
+  return { icon, label, action: () => store.runQuickAdd() }
+}
+function ctxMusicMenu() {
+  let p = null
+  let st = null
+  try { p = getCanvasPlayer(); st = p.getState() } catch (e) { /* ignore */ }
+  const isPlaying = !!(st && st.playing)
+  const items = [{
+    icon: isPlaying ? 'pause' : 'play',
+    label: isPlaying ? '暂停' : '播放',
+    action: () => { try { isPlaying ? p.pause() : p.play() } catch (e) { /* ignore */ } }
+  }]
+  if (st && st.current) {
+    items.push({ icon: 'arrowleft', label: '上一首', action: () => { try { p.previous() } catch (e) { /* ignore */ } } })
+    items.push({ icon: 'arrow', label: '下一首', action: () => { try { p.next() } catch (e) { /* ignore */ } } })
+  }
+  items.push(ctxGo('home', '返回画布', '/'))
+  return items
+}
+const PAGE_MENUS = {
+  home: () => [
+    ctxGo('image', '上传照片', '/album?add=1'),
+    ctxGo('tasks', '新建任务', '/tasks?add=1'),
+    ctxGo('note', '写笔记', '/notes?add=1'),
+    ctxGo('wallet', '记一笔', '/ledger')
+  ],
+  tasks: () => [
+    ctxQuickAdd('plus', '新建任务'),
+    ctxGo('trash', '回收站', '/trash'),
+    ctxGo('chart', '数据中心', '/stats'),
+    ctxGo('settings', '设置', '/settings')
+  ],
+  notes: () => [
+    ctxQuickAdd('plus', '写笔记'),
+    ctxGo('trash', '回收站', '/trash'),
+    ctxGo('chart', '数据中心', '/stats'),
+    ctxGo('settings', '设置', '/settings')
+  ],
+  ledger: () => [
+    ctxQuickAdd('plus', '记一笔'),
+    ctxGo('chart', '数据中心', '/stats'),
+    ctxGo('tasks', '任务', '/tasks'),
+    ctxGo('settings', '设置', '/settings')
+  ],
+  album: () => [
+    ctxQuickAdd('plus', '添加照片'),
+    ctxGo('backpack', '背包', '/backpack'),
+    ctxGo('map-pin', '足迹', '/map'),
+    ctxGo('chart', '数据中心', '/stats'),
+    ctxGo('settings', '设置', '/settings')
+  ],
+  backpack: () => [
+    ctxGo('album', '相册', '/album'),
+    ctxGo('achievements', '成就殿堂', '/achievements'),
+    ctxGo('settings', '设置', '/settings')
+  ],
+  achievements: () => [
+    ctxGo('user', '个人主页', '/profile'),
+    ctxGo('chart', '数据中心', '/stats'),
+    ctxGo('backpack', '背包', '/backpack')
+  ],
+  stats: () => [
+    ctxGo('wallet', '记一笔', '/ledger'),
+    ctxGo('tasks', '任务', '/tasks'),
+    ctxGo('achievements', '成就殿堂', '/achievements')
+  ],
+  map: () => [
+    ctxGo('album', '相册', '/album'),
+    ctxGo('tasks', '任务', '/tasks'),
+    ctxGo('user', '个人主页', '/profile')
+  ],
+  profile: () => [
+    ctxGo('achievements', '成就殿堂', '/achievements'),
+    ctxGo('album', '相册', '/album'),
+    ctxGo('settings', '设置', '/settings')
+  ],
+  settings: () => [
+    ctxGo('puzzle', '插件中心', '/plugins'),
+    ctxGo('shield', '隐私政策', '/privacy'),
+    ctxGo('file', '用户协议', '/terms'),
+    ctxGo('trash', '回收站', '/trash')
+  ],
+  plugins: () => [
+    ctxGo('settings', '设置', '/settings'),
+    ctxGo('shield', '隐私政策', '/privacy'),
+    ctxGo('file', '用户协议', '/terms')
+  ],
+  steam: () => [
+    ctxGo('chart', '数据中心', '/stats'),
+    ctxGo('achievements', '成就殿堂', '/achievements'),
+    ctxGo('settings', '设置', '/settings')
+  ],
+  trash: () => [
+    ctxGo('tasks', '任务', '/tasks'),
+    ctxGo('note', '笔记', '/notes'),
+    ctxGo('settings', '设置', '/settings')
+  ],
+  privacy: () => [
+    ctxGo('settings', '设置', '/settings'),
+    ctxGo('file', '用户协议', '/terms')
+  ],
+  terms: () => [
+    ctxGo('settings', '设置', '/settings'),
+    ctxGo('shield', '隐私政策', '/privacy')
+  ],
+  ai: () => [
+    ctxGo('tasks', '任务', '/tasks'),
+    ctxGo('note', '笔记', '/notes'),
+    ctxGo('puzzle', '插件中心', '/plugins')
+  ],
+  music: ctxMusicMenu
+}
+// 未知路由（如插件内页）回退到通用生产入口
+function ctxFallback() {
+  return [
+    ctxGo('tasks', '新建任务', '/tasks?add=1'),
+    ctxGo('note', '写笔记', '/notes?add=1'),
+    ctxGo('wallet', '记一笔', '/ledger')
   ]
+}
+function buildContextItems(el) {
+  const build = PAGE_MENUS[route.name] || ctxFallback
+  const items = build()
   // 若右键落在带 data-ctx 的元素上，追加其声明的自定义项（多区域差异化）
   if (el && el.dataset && el.dataset.ctx) {
     try {
@@ -213,7 +342,9 @@ function buildContextItems(el) {
       if (Array.isArray(extra)) extra.forEach((it) => it && it.label && items.push(it))
     } catch { /* 忽略非法声明 */ }
   }
-  items.push({ icon: 'home', label: '回到主页', action: () => routerPush('/') })
+  // 主页/播放页已自带回程项，不再重复「回到主页」
+  const noHome = route.name === 'home' || items.some((it) => it && (it.label === '回到主页' || it.label === '返回画布'))
+  if (!noHome) items.push({ icon: 'home', label: '回到主页', action: () => routerPush('/') })
   return items
 }
 function onContextMenu(e) {
@@ -285,7 +416,7 @@ onUnmounted(() => {
   <div v-if="wallStyle" class="wallpaper" :style="wallStyle" aria-hidden="true"></div>
 
   <!-- 电脑网站模式：左侧固定垂直导航栏（≥900px）——贴死最左侧、通高、无品牌块，主菜单顶格 -->
-  <aside v-if="isDesktop" class="sidebar" :class="{ 'is-collapsed': navCollapsed }" aria-label="主导航">
+  <aside v-if="isDesktop && route.name !== 'music'" class="sidebar" :class="{ 'is-collapsed': navCollapsed }" aria-label="主导航">
     <div class="side-top">
       <button class="side-collapse" :title="navCollapsed ? '展开导航' : '收起导航'" :aria-label="navCollapsed ? '展开导航' : '收起导航'" @click="toggleNav">
         <Icon :name="navCollapsed ? 'chevron-right' : 'chevron-left'" :size="17" />
@@ -411,7 +542,7 @@ onUnmounted(() => {
   </transition>
 
   <!-- 手机 PWA 模式：底部悬浮胶囊导航（<900px） -->
-  <nav v-if="!isDesktop" class="bottomnav">
+  <nav v-if="!isDesktop && route.name !== 'music'" class="bottomnav">
     <motion.button v-for="n in navItems" :key="n.name" class="nav-item"
       :class="{ active: n.name === '__more' ? moreActive : route.name === n.name }"
       :while-press="{ scale: 0.9 }" :transition="{ type: 'spring', stiffness: 420, damping: 22 }"
@@ -435,6 +566,8 @@ onUnmounted(() => {
 
   <!-- 全局液态玻璃弹窗（替代原生 confirm/alert） -->
   <GlassDialog />
+  <!-- v3.0.2：关联内容就地预览（不跳页） -->
+  <EntityPreviewDialog />
 
   <!-- v2.1.0：全局生产力组件根级挂载 -->
   <GlobalContextMenu />

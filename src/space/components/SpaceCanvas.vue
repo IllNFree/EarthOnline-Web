@@ -14,6 +14,9 @@ import { screenToWorld, zoomAt, clampScale, animateCamera, visibleWorldRect } fr
 import { recognizeStroke } from '../core/recognizer.js'
 import { FpsMeter } from '../core/perf.js'
 import { parse } from 'marked'
+import { useAppStore } from '../../stores/app.js'
+import { usePreview } from '../../stores/preview.js'
+import { entityOf, unlinkEdge } from '../core/entityRefs.js'
 
 const props = defineProps({
   ws: { type: Object, required: true },
@@ -21,6 +24,17 @@ const props = defineProps({
   lite: { type: Boolean, default: false }
 })
 const emit = defineEmits(['space-enter', 'space-new', 'open-media', 'toast', 'selection-change', 'stats', 'ai-summary', 'import-files', 'import-folder', 'tidy-current', 'tidy-all'])
+const store = useAppStore()
+const { open: openPreview } = usePreview()
+// 绑定了功能实体的卡片右上角显示关联角标，点击就地预览（不跳页）
+function relCount(n) {
+  const e = entityOf(n)
+  return e ? store.relatedEntitiesFor(e.type, e.id).length : 0
+}
+function openBoundEntity(n) {
+  const e = entityOf(n)
+  if (e) openPreview(e.type, e.id)
+}
 
 const root = ref(null)
 const canvasEl = ref(null)
@@ -378,13 +392,12 @@ const flat = computed(() => props.ui.flat || props.ws.settings.flat)
 
 // ---------- 数据卡片 DOM 叠层 ----------
 // 方案 B：屏幕内的面板 / 卡片 / 便利贴用真实 DOM 渲染（保留原作组件与全部交互），
-// 画布只绘制空白与占位；LOD 低于阈值或设备低配时退回 Canvas 占位，避免卡顿。
+// 画布只绘制空白与占位；任何缩放级别都渲染真实卡片（不做 LOD 降级），
+// 仅靠可视剔除 + 数量上限控制开销。
 const DOM_KINDS = ['panel', 'card', 'memo']
-const DOM_MIN_SCALE = 0.5
 const domNodes = computed(() => {
   void props.ui.tick
   const c = props.ws.space.camera
-  if (c.s < DOM_MIN_SCALE) return []
   const pad = 40 / c.s
   const v = visibleWorldRect(c, stage.w, stage.h, pad)
   const list = []
@@ -469,8 +482,10 @@ function cardStyle(n) {
     st.top = baseY + 'px'
     st.zIndex = String(Math.round((n.z || 1) + 20))
   }
-  // 地图卡无外框，整卡透明，只留地图本体
-  if (n.panelKind === 'map') st.background = 'transparent'
+  // 地图 / 天气卡无外框，节点容器透明，视觉由内部组件承担
+  if (n.panelKind === 'map' || n.panelKind === 'weather') st.background = 'transparent'
+  // 照片卡：白边相纸，背景固定白色（不受节点自定义色影响）
+  if (n.kind === 'image') st.background = '#FFFFFF'
   // 时钟：浅/深主题两版（用户自定义色优先）；音乐：固定红卡
   if (n.cardKind === 'clock') {
     const custom = n.color && n.color !== '#3B3A37'
@@ -1726,6 +1741,17 @@ function onContextMenu(e) {
       }
       items.push({ label: '复制 (Ctrl+C)', icon: 'copy', action: () => copyCtx(n) })
       items.push({ label: '粘贴到此处 (Ctrl+V)', icon: 'copy', action: () => pasteHere(p.x, p.y) })
+      // 关联连线（biLinks 派生）可在此断开：两端同步消失；纯装饰连线不在此列
+      const relEdges = (props.ws.edges || []).filter((x) => (x.fromId === n.id || x.toId === n.id) && x.source === 'relation')
+      relEdges.forEach((edge) => {
+        const oid = edge.fromId === n.id ? edge.toId : edge.fromId
+        const other = props.ws.nodeById(oid)
+        const label = other && (other.title || other.text) ? String(other.title || other.text).slice(0, 12) : '关联卡片'
+        items.push({
+          label: '断开与「' + label + '」的连线', icon: 'close', danger: true,
+          action: () => { unlinkEdge(props.ws, store, edge.id); invalidate() }
+        })
+      })
       items.push({ divider: true })
     } else {
       items.push({ label: '粘贴到此处 (Ctrl+V)', icon: 'copy', action: () => pasteHere(p.x, p.y) })
@@ -2020,7 +2046,7 @@ watch(() => props.ws.settings.background, () => invalidate(), { deep: true })
     @pointercancel="onPointerCancel" @pointerleave="onPointerLeave" @wheel="onWheel" @dblclick="onDoubleClick" @contextmenu.prevent.stop="onContextMenu">
     <canvas ref="canvasEl" class="space-canvas"></canvas>
 
-    <!-- 数据卡片真实 DOM 叠层：随相机整体变换，LOD 低于 0.5 退回 Canvas 占位 -->
+    <!-- 数据卡片真实 DOM 叠层：随相机整体变换，任意缩放都保持真卡渲染 -->
     <div ref="cardLayer" class="sp-card-layer" :class="{ passive: ui.tool !== 'select', paging, 'stack-anim': stackAnim }">
       <div v-for="n in domNodes" :key="n.id" class="sp-dom-card"
         :class="['kind-' + (n.panelKind || n.cardKind || n.kind), { selected: selectedIds.has(n.id), hovered: ui.hoverId === n.id, stacked: (n.stackIdx || 0) > 0, pressing: pressingId === n.id, 'link-source': linkSourceId === n.id, 'stack-target': stackTargetId === n.id }]"
@@ -2032,6 +2058,8 @@ watch(() => props.ws.settings.background, () => invalidate(), { deep: true })
           <div class="sp-note-text">{{ n.text }}</div>
           <div class="sp-note-fold"></div>
         </template>
+        <button v-if="entityOf(n)" class="sp-rel-badge" :title="'绑定实体 · ' + relCount(n) + ' 条关联（点击预览）'"
+          @pointerdown.stop @click.stop="openBoundEntity(n)">⇄ {{ relCount(n) }}</button>
         <div v-if="selectedIds.has(n.id)" class="sp-resize-grip" title="拖动缩放卡片"
           @pointerdown.stop="onCardResize($event, n)" @dblclick.stop></div>
       </div>
@@ -2369,6 +2397,16 @@ watch(() => props.ws.settings.background, () => invalidate(), { deep: true })
     box-shadow var(--eo-lift-dur, .2s) var(--eo-lift-ease, cubic-bezier(.2,.8,.2,1));
   will-change: transform;
 }
+.sp-rel-badge {
+  position: absolute; top: 5px; right: 6px; z-index: 4;
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 10px; font-weight: 700; line-height: 1;
+  color: var(--eo-ink-soft); background: var(--eo-chip);
+  border: 1px solid var(--eo-glass-border); border-radius: 999px;
+  padding: 3px 7px; cursor: pointer; opacity: .72;
+  transition: opacity .12s ease, transform .12s ease;
+}
+.sp-rel-badge:hover { opacity: 1; transform: translateY(-1px); }
 .sp-dom-card:hover:not(.pressing) {
   transform: translateY(var(--eo-lift, -3px));
   box-shadow: var(--eo-shadow-lift, 0 8px 24px rgba(0,0,0,.08));
@@ -2383,6 +2421,15 @@ watch(() => props.ws.settings.background, () => invalidate(), { deep: true })
   box-shadow: var(--eo-shadow-lift, 0 8px 24px rgba(0,0,0,.08));
 }
 .sp-dom-card.kind-map:active { cursor: grabbing; }
+/* 天气：深色卡自带底色与圆角，节点容器透明；hover 仍保留统一上浮 + 弥散影 */
+.sp-dom-card.kind-weather {
+  background: transparent; border: 0 none; box-shadow: none; padding: 0;
+  cursor: grab;
+}
+.sp-dom-card.kind-weather:hover:not(.pressing) {
+  transform: translateY(var(--eo-lift, -3px));
+  box-shadow: var(--eo-shadow-lift, 0 8px 24px rgba(0,0,0,.08));
+}
 .sp-dom-card.selected {
   border-color: transparent;
   box-shadow: 0 0 0 1.5px var(--sp-ink), var(--eo-shadow-rest, 0 1px 3px rgba(0,0,0,.05));
@@ -2400,6 +2447,16 @@ watch(() => props.ws.settings.background, () => invalidate(), { deep: true })
 .sp-dom-card.stack-target { outline: 2px dashed var(--accent, #E8B86D); outline-offset: 3px; }
 .sp-dom-card.kind-clock { background: linear-gradient(158deg, #F2F0EB 0%, #EDEAE3 100%); border-color: rgba(0,0,0,0.06); }
 .sp-dom-card.kind-audio { background: linear-gradient(158deg, #D64747 0%, #B72F35 100%); border-color: rgba(255,255,255,0.10); }
+/* 照片卡：白边相纸（白底 + 内边距 + 柔和投影），照片本体在内侧 */
+.sp-dom-card.kind-image {
+  background: #FFFFFF; border: 0 none; border-radius: 10px; padding: 7px;
+  box-shadow: 0 8px 22px -8px rgba(0, 0, 0, .28), 0 1px 0 rgba(255,255,255,.6) inset;
+}
+.sp-dom-card.kind-image:hover:not(.pressing) {
+  transform: translateY(var(--eo-lift, -3px));
+  box-shadow: 0 14px 30px -10px rgba(0, 0, 0, .32);
+}
+.sp-dom-card.kind-image.selected { box-shadow: 0 0 0 1.5px var(--sp-ink), 0 8px 22px -8px rgba(0, 0, 0, .28); }
 :global([data-theme='dark']) .sp-dom-card.kind-clock { background: linear-gradient(158deg, #414144 0%, #323234 100%); border-color: rgba(255,255,255,0.08); }
 .sp-dom-card.kind-memo {
   border-radius: 6px 6px 14px 6px; border-color: rgba(160,140,90,0.28);
@@ -2435,7 +2492,8 @@ watch(() => props.ws.settings.background, () => invalidate(), { deep: true })
 :global([data-theme='dark'] .sp-dom-card .cb-doc__body::-webkit-scrollbar-thumb) { background: rgba(255,255,255,.18); }
 :global([data-theme='dark'] .sp-dom-card .cb-doc__empty),
 :global([data-theme='dark'] .sp-dom-card .cb-img__empty) { color: var(--sp-ink-3); }
-:global([data-theme='dark'] .sp-dom-card .cb-img) { background: rgba(255,255,255,.06); }
+/* 照片卡在白边相纸里，深色主题也保持白色底，不再覆盖 */
+:global([data-theme='dark'] .sp-dom-card.kind-image .cb-img) { background: #FFFFFF; }
 :global([data-theme='dark'] .sp-dom-card .cb-md),
 :global([data-theme='dark'] .sp-dom-card .cb-md .md) { color: var(--sp-ink-2); }
 .sp-handle-ov { position: absolute; pointer-events: none; }

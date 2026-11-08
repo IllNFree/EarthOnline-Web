@@ -1,7 +1,7 @@
 {
   "name": "earthonline-web",
   "private": true,
-  "version": "3.0.0",
+  "version": "3.0.1",
   "type": "module",
   "main": "electron/main.cjs",
   "description": "地球Online Web 端 — Vite + Vue 3 + Pinia 重构版 (Glassmorphism PWA)",

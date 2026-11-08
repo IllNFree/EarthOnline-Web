@@ -11,6 +11,7 @@ import EntitySearchDialog from '../components/EntitySearchDialog.vue'
 import EntityRelationsPanel from '../components/EntityRelationsPanel.vue'
 import EmptyState from '../components/EmptyState.vue'
 import { BI_LINK_TYPES } from '../lib/bilink.js'
+import { parseTagsInput } from '../lib/model.js'
 
 const store = useAppStore()
 const dialog = useDialogStore()
@@ -22,6 +23,7 @@ const query = ref('')
 const results = ref([])
 const searching = ref(false)
 const showAdd = ref(false)
+const editId = ref(null) // 非空 = 编辑已保存足迹；空 = 新增
 const pick = ref(null) // {lng,lat}
 const form = ref({ name: '', note: '', date: '', tags: '' })
 const loadErr = ref('')
@@ -60,6 +62,7 @@ async function initMap() {
     })
     // 双击地图任意位置 → 直接弹出「创建足迹」
     mapCtl.onDblClick((ll) => {
+      editId.value = null
       pick.value = ll
       form.value.name = form.value.name || '我的足迹'
       showAdd.value = true
@@ -86,7 +89,8 @@ function renderFootprints() {
     mapCtl.addFootprint(l.lng, l.lat, l.name, () => focusLocation(l))
   })
 }
-watch(() => store.live.locations.length, () => renderFootprints())
+// 名称 / 坐标变化也要重绘标记（编辑足迹后立即同步）
+watch(() => store.live.locations.map((l) => [l.id, l.name, l.lat, l.lng].join(':')).join('|'), () => renderFootprints())
 
 // ---- 缩放条（与画布/主页地图卡缩放完全独立）----
 const mapZoom = ref(12)
@@ -154,9 +158,25 @@ watch(query, (q) => {
 function focusResult(r) {
   if (!r.location) return
   if (mapCtl) { mapCtl.clearMarkers(); mapCtl.setCenter(r.location.lng, r.location.lat); mapCtl.addMarker(r.location.lng, r.location.lat, r.name) }
+  editId.value = null
   pick.value = r.location
-  form.value.name = r.name
+  form.value = { name: r.name, note: '', date: '', tags: '' }
   showAdd.value = true
+}
+// 点击已保存足迹 → 回填表单进入编辑；定位按钮单独走 focusLocation
+function openEdit(l) {
+  editId.value = l.id
+  pick.value = { lng: l.lng, lat: l.lat }
+  const tags = Array.isArray(l.tags) ? l.tags.join(', ') : (l.tags || '')
+  form.value = { name: l.name || '', note: l.note || '', date: l.date || '', tags }
+  showAdd.value = true
+  if (mapCtl) mapCtl.setCenter(l.lng, l.lat, 15)
+}
+function closeAdd() {
+  showAdd.value = false
+  editId.value = null
+  form.value = { name: '', note: '', date: '', tags: '' }
+  pick.value = null
 }
 // 点击侧栏 / 列表足迹 / 地图足迹标记 → 地图自动居中定位（不清除常驻足迹）
 function focusLocation(l) {
@@ -168,12 +188,23 @@ function focusLocation(l) {
 function save() {
   const p = pick.value
   if (!p) return store.showToast('请先在地图上点选位置')
-  const r = store.addLocation({ name: form.value.name, lat: p.lat, lng: p.lng, note: form.value.note, date: form.value.date, tags: form.value.tags })
-  if (!r.ok) return store.showToast(r.error)
-  store.showToast('已添加足迹')
-  showAdd.value = false
-  form.value = { name: '', note: '', date: '', tags: '' }
-  pick.value = null
+  const name = String(form.value.name || '').trim()
+  if (!name) return store.showToast('名称不能为空')
+  if (editId.value) {
+    const patch = {
+      name, lat: p.lat, lng: p.lng,
+      note: form.value.note, tags: parseTagsInput(form.value.tags)
+    }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(form.value.date)) patch.date = form.value.date
+    const r = store.updateLocation(editId.value, patch)
+    if (!r) return store.showToast('足迹不存在或已被删除')
+    store.showToast('足迹已更新')
+  } else {
+    const r = store.addLocation({ name: form.value.name, lat: p.lat, lng: p.lng, note: form.value.note, date: form.value.date, tags: form.value.tags })
+    if (!r.ok) return store.showToast(r.error)
+    store.showToast('已添加足迹')
+  }
+  closeAdd()
 }
 async function removeLoc(id) {
   const ok = await dialog.confirm({ title: '删除足迹', message: '该足迹将移入回收站（30 天内可恢复）。', danger: true, confirmText: '删除' })
@@ -246,7 +277,7 @@ const relatedForDetail = computed(() => (detailLoc.value ? store.relatedEntities
       </EmptyState>
       <!-- 紧凑卡片流：左侧地点标识与名称，右侧时间/坐标，双列自适应铺满一屏 -->
       <div class="loc-grid">
-        <div v-for="l in store.live.locations" :key="l.id" class="glass loc-card" @click="focusLocation(l)">
+        <div v-for="l in store.live.locations" :key="l.id" class="glass loc-card" @click="openEdit(l)">
           <div class="loc-card__top">
             <span class="loc-card__ico"><Icon name="location" :size="15" /></span>
             <span class="loc-card__name">{{ l.name }}</span>
@@ -255,6 +286,7 @@ const relatedForDetail = computed(() => (detailLoc.value ? store.relatedEntities
           <div class="loc-card__meta">
             <span class="loc-card__coord">{{ l.lat.toFixed(3) }}, {{ l.lng.toFixed(3) }}</span>
             <span class="loc-card__acts">
+              <button class="ghost-btn" title="定位" @click.stop="focusLocation(l)"><Icon name="map-pin" :size="14" /></button>
               <button class="ghost-btn" title="关联内容" @click.stop="openRel('location', l.id)"><Icon name="link" :size="14" /></button>
               <button class="ghost-btn" title="详情" @click.stop="openDetail(l)"><Icon name="info" :size="14" /></button>
               <button class="ghost-btn" title="删除" @click.stop="removeLoc(l.id)"><Icon name="trash" :size="14" /></button>
@@ -264,13 +296,13 @@ const relatedForDetail = computed(() => (detailLoc.value ? store.relatedEntities
       </div>
     </div>
 
-    <Modal title="添加足迹" :show="showAdd" @close="showAdd = false">
+    <Modal :title="editId ? '编辑足迹' : '添加足迹'" :show="showAdd" @close="closeAdd">
       <div v-if="pick" class="muted" style="margin-bottom:8px">坐标：{{ pick.lat.toFixed(5) }}, {{ pick.lng.toFixed(5) }}</div>
       <div class="field"><label>名称</label><input v-model="form.name" /></div>
       <div class="field"><label>日期</label><input type="date" v-model="form.date" /></div>
       <div class="field"><label>备注</label><textarea v-model="form.note"></textarea></div>
       <div class="field"><label>标签</label><input v-model="form.tags" /></div>
-      <button class="btn" style="width:100%" @click="save"><Icon name="map-pin" :size="16" /> 保存足迹</button>
+      <button class="btn" style="width:100%" @click="save"><Icon name="map-pin" :size="16" /> {{ editId ? '保存修改' : '保存足迹' }}</button>
     </Modal>
 
     <!-- 模块三：足迹详情 + 关联内容（双向绑定 + 画布语义连线） -->

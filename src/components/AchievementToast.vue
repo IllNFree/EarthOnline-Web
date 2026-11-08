@@ -1,12 +1,11 @@
 <script setup>
-// ===== 模块五：沉浸式成就解锁反馈（Haze 满血 + 稀有度特效）=====
-// 右下角液态玻璃气泡，按 rarity 展示不同光效（epic/legendary 带流光描边）。
-// 2026-11-06：展示时长 6 秒、可点击 / 点 × 手动关闭，文案与卡片加宽加高，音效改为 WebAudio 实时合成。
+// ===== 模块五：沉浸式成就解锁反馈 =====
+// 右下角液态玻璃气泡：等级（稀有度）设定已取消，所有成就统一使用流光描边与同档音效。
+// 展示时长 6 秒、可点击 / 点 × 手动关闭，音效为 WebAudio 实时合成。
 import { useAppStore } from '../stores/app.js'
 import Icon from './Icon.vue'
 
 const store = useAppStore()
-const RARITY_LABEL = { common: '普通', rare: '稀有', epic: '史诗', legendary: '传说' }
 </script>
 
 <template>
@@ -16,13 +15,13 @@ const RARITY_LABEL = { common: '普通', rare: '稀有', epic: '史诗', legenda
         v-for="a in store.achievementFeed"
         :key="a.id"
         class="ach-toast glass glass-strong"
-        :class="['r-' + (a.rarity || 'common'), { leaving: a.leaving }]"
+        :class="{ leaving: a.leaving }"
         role="status"
         @click="store.dismissAchievement(a.id)"
       >
         <div class="ach-icon"><Icon :name="a.icon || 'trophy'" :size="26" /></div>
         <div class="ach-body">
-          <div class="ach-rar">{{ RARITY_LABEL[a.rarity] || '普通' }}成就解锁</div>
+          <div class="ach-rar">成就解锁</div>
           <div class="ach-title">{{ a.title }}</div>
           <div class="ach-desc">{{ a.desc }}</div>
         </div>
@@ -69,18 +68,12 @@ const RARITY_LABEL = { common: '普通', rare: '稀有', epic: '史诗', legenda
 }
 .ach-close:hover { opacity: 1; background: rgba(44, 44, 44, .08); }
 
-/* 稀有度配色与光效（Haze 满血，不降级） */
-.r-rare .ach-icon { background: linear-gradient(135deg, #C9C5BE, #8C8C8C); }
-.r-epic .ach-icon { background: linear-gradient(135deg, #BDB8B0, #8C8C8C); }
-.r-legendary .ach-icon { background: linear-gradient(135deg, #D8D4CD, #8C8C8C); }
-.r-epic, .r-legendary { border: 1px solid rgba(200, 196, 189, .5); }
-/* 流光描边：史诗/传说级专属 */
-.ach-shine { position: absolute; inset: 0; pointer-events: none; opacity: 0; }
-.r-epic .ach-shine, .r-legendary .ach-shine {
-  opacity: 1;
-  background: linear-gradient(120deg, transparent 30%, rgba(226, 222, 215, .55) 50%, transparent 70%);
+/* 统一流光描边：所有成就同档反馈，不再按等级区分 */
+.ach-shine {
+  position: absolute; inset: 0; pointer-events: none; opacity: 1;
+  background: linear-gradient(120deg, transparent 30%, rgba(226, 222, 215, .45) 50%, transparent 70%);
   background-size: 220% 100%;
-  animation: achShine 2.2s linear infinite;
+  animation: achShine 2.6s linear infinite;
 }
 @keyframes achShine { from { background-position: 120% 0; } to { background-position: -120% 0; } }
 /* 底部 6 秒倒计时细线（与 notifyAchievement 的 6000ms 同步） */

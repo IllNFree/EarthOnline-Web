@@ -2,16 +2,33 @@
 // ===== 卡片矩阵内容渲染（ArcMind 视觉版）=====
 // 2026-11-04：按用户要求下线文字卡 / 链接卡 / 导航卡 / 导航面板 / 隐藏卡 / 热图卡，
 // 这里只保留三张默认卡片：便利贴卡片（note）、时钟（clock）、音频（audio）。
-import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { computed, ref, reactive, onMounted, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { cardMeta } from '../lib/cardMatrix.js'
 import { getCanvasPlayer, getActiveAudioKey, setActiveAudioKey } from '../lib/audioPlayer.js'
+import { loadPlaylist } from '../lib/meting.js'
 import { useAppStore } from '../stores/app.js'
 import Icon from './Icon.vue'
 import MarkdownView from './MarkdownView.vue'
+import GlassBottomSheet from './GlassBottomSheet.vue'
 
 const props = defineProps({ node: { type: Object, required: true }, rev: { type: Number, default: 0 } })
 const emit = defineEmits(['edit', 'patch'])
 const store = useAppStore()
+const router = useRouter()
+// 文档卡绑定笔记：绑定后 entityOf() 能解析出 memo 实体，从而参与 biLinks 与画布连线
+const bindOpen = ref(false)
+function bindNote(id) {
+  emit('patch', { noteId: String(id) })
+  bindOpen.value = false
+  store.showToast('已绑定笔记，可参与关联与连线')
+}
+function createAndBindNote() {
+  const r = store.addMemo({ title: props.node.title || '画布文档', markdown: docBody.value || '', tags: [] })
+  const id = r && ((r.memo && r.memo.id) || r.id)
+  if (id) bindNote(id)
+  else store.showToast('新建笔记失败')
+}
 
 const d = computed(() => {
   void props.rev // 卡片数据在工作区里是非响应式对象，靠版本号触发重算
@@ -29,13 +46,18 @@ const audioKey = computed(() => String(props.node.id || ''))
 // 2026-11-04 P2：音乐卡升级为多曲目播放器。兼容旧数据（单曲 src/title/source），
 // 新数据统一存 cardData.tracks: [{ title, src, source, format, cover, songId, qqUrl }]。
 const activeIndex = ref(Number(d.value.activeIndex) || 0)
-const trackList = computed(() => {
+// ---- 网易云歌单：ID 由用户自己填，公共 Meting 拉取；与卡片内自定义曲目合并 ----
+const PLAYLIST_KEY = 'eo:music_playlist'
+const meting = reactive({ state: 'idle', tracks: [], err: '' })
+const playlistInput = ref('')
+const localTracks = computed(() => {
   const arr = Array.isArray(d.value.tracks) ? d.value.tracks.filter((t) => t && t.src) : []
   if (arr.length) return arr
   return d.value.src
     ? [{ title: d.value.title || '音频', src: d.value.src, source: d.value.source, format: d.value.format, cover: d.value.cover, songId: d.value.songId, qqUrl: d.value.qqUrl }]
     : []
 })
+const trackList = computed(() => localTracks.value.concat(meting.tracks))
 const audioSrc = computed(() => (trackList.value[activeIndex.value] || {}).src || '')
 // 音源格式：无扩展名（data URI / 网易云外链）时必须显式告诉解码器
 function formatOf(track) {
@@ -58,27 +80,54 @@ const favOpen = ref(false)
 let player = null
 let unsubProgress = null
 let unsubState = null
+let errStreak = 0
 
 function ensurePlayer() {
   if (player) return player
   player = getCanvasPlayer()
   unsubProgress = player.progress.subscribe((p) => {
+    // 播放器是全局单例：只有本卡是当前音源时才更新进度，避免多张卡片进度同步
+    if (getActiveAudioKey() !== audioKey.value) return
     cur.value = p.currentTime || 0
     dur.value = p.duration || 0
     progress.value = dur.value ? (cur.value / dur.value) * 100 : 0
   })
   unsubState = player.state.subscribe((s) => {
+    if (getActiveAudioKey() !== audioKey.value) return
     const st = s.status
-    playing.value = st === 'playing'
-    if (st === 'ended') {
-      // 单曲循环：播完自动从头再来；否则停在末尾
-      if (loopOne.value) { playAt(activeIndex.value); return }
-      playing.value = false
+    playing.value = !!s.playing || st === 'playing'
+    if (typeof s.currentIndex === 'number' && s.currentIndex >= 0 && s.currentIndex < trackList.value.length) {
+      activeIndex.value = s.currentIndex
     }
-    if (st === 'idle') playing.value = false
-    if (st === 'error') { store.showToast('音频加载失败：链接可能已失效或需要版权'); playing.value = false }
+    if (st === 'playing') errStreak = 0
+    if (st === 'ended' || st === 'idle') playing.value = false
+    if (st === 'error') {
+      playing.value = false
+      // 坏链自动跳过下一首；连续失败到歌单末尾才提示，避免无限循环
+      if (errStreak < trackList.value.length - 1) {
+        errStreak++
+        setTimeout(() => { if (trackList.value.length) nextTrack() }, 700)
+      } else {
+        errStreak = 0
+        store.showToast('音频加载失败：链接可能已失效或需要版权')
+      }
+    }
   })
+  try {
+    player.setVolume(volume.value)
+    player.setMuted(muted.value)
+    applyPlayMode()
+  } catch (e) { /* 引擎版本不支持时忽略 */ }
   return player
+}
+
+// 播放模式：0 顺序循环 / 1 单曲循环 / 2 随机
+function applyPlayMode() {
+  const p = player || getCanvasPlayer()
+  try {
+    if (typeof p.setShuffle === 'function') p.setShuffle(playMode.value === 2)
+    if (typeof p.setRepeat === 'function') p.setRepeat(playMode.value === 1 ? 'one' : 'all')
+  } catch (e) { /* ignore */ }
 }
 
 // 播放队列：把曲目列表交给 makenoise，一次播放整张歌单
@@ -87,8 +136,11 @@ function queueOf() {
     id: audioKey.value + '-' + i,
     src: t.src,
     title: t.title || ('曲目 ' + (i + 1)),
+    artist: t.artist || '',
     format: formatOf(t),
-    cover: t.cover || ''
+    cover: t.cover || '',
+    artwork: t.cover || '',
+    lrc: t.lrc || ''
   }))
 }
 function playAt(i) {
@@ -96,24 +148,18 @@ function playAt(i) {
   if (!list.length) { store.showToast('请先上传音频，或从收藏添加曲目'); return }
   const idx = Math.max(0, Math.min(list.length - 1, i))
   const p = ensurePlayer()
-  if (getActiveAudioKey() && getActiveAudioKey() !== audioKey.value) {
-    try { getCanvasPlayer().pause() } catch (e) { /* ignore */ }
-  }
   activeIndex.value = idx
   emit('patch', { activeIndex: idx })
-  p.play(queueOf(), { startIndex: idx })
+  // 先登记当前音源再开播：状态回调只处理本卡事件，顺序反了会丢首帧状态
   setActiveAudioKey(audioKey.value)
+  p.play(queueOf(), { startIndex: idx })
   store.bumpMilestone('musicPlay')
 }
 function toggleAudio() {
   const src = audioSrc.value
   if (!src) { store.showToast('请先上传音频，或从收藏添加曲目'); return }
   const p = ensurePlayer()
-  // 同一时刻只允许一张唱片播放：切换卡片时先暂停另一张
-  if (getActiveAudioKey() && getActiveAudioKey() !== audioKey.value) {
-    const other = getCanvasPlayer()
-    other.pause()
-  }
+  // 只有点击这里的暂停按钮才会停止播放，其它任何操作都不自动暂停
   if (playing.value) {
     p.pause()
     setActiveAudioKey(null)
@@ -121,13 +167,13 @@ function toggleAudio() {
   }
   const cur0 = p.getState()
   const sameTrack = cur0.current && cur0.current.track && cur0.current.track.src === src
+  setActiveAudioKey(audioKey.value)
   if (sameTrack) {
     p.play()
     store.bumpMilestone('musicPlay')
   } else {
     playAt(activeIndex.value)
   }
-  setActiveAudioKey(audioKey.value)
 }
 function prevTrack() {
   const n = trackList.value.length
@@ -148,21 +194,30 @@ function seekAudio(e) {
   p.seek(ratio * dur.value)
 }
 function fmt(s) { if (!s || isNaN(s)) return '0:00'; const m = Math.floor(s / 60); const ss = Math.floor(s % 60); return m + ':' + String(ss).padStart(2, '0') }
-// 从歌单移除一首；若正在播放则先停
+// 从歌单移除一首；正在播放的曲目被移除也不打断播放。
+// 网易云歌单曲目只移出本地列表，不写回卡片数据
 function removeTrack(i) {
-  const list = trackList.value.slice()
-  if (i < 0 || i >= list.length) return
-  if (playing.value) { try { getCanvasPlayer().pause() } catch (e) { /* ignore */ } setActiveAudioKey(null) }
-  list.splice(i, 1)
-  const next = Math.max(0, Math.min(list.length - 1, i >= activeIndex.value ? activeIndex.value : activeIndex.value - 1))
-  activeIndex.value = next
-  emit('patch', {
-    tracks: list,
-    activeIndex: next,
-    src: (list[next] || {}).src || '',
-    title: (list[next] || {}).title || ''
-  })
-  if (!list.length) store.showToast('歌单已清空')
+  const total = trackList.value.length
+  if (i < 0 || i >= total) return
+  const nLocal = localTracks.value.length
+  if (i >= nLocal) {
+    // Meting 歌单：只在内存里移除，重新填歌单 ID 还能再拉回来
+    meting.tracks.splice(i - nLocal, 1)
+    activeIndex.value = Math.max(0, Math.min(trackList.value.length - 1, i === activeIndex.value ? i : activeIndex.value))
+  } else {
+    // 卡片内自定义曲目：写回 cardData，保持原有能力
+    const list = localTracks.value.slice()
+    list.splice(i, 1)
+    const next = Math.max(0, Math.min(list.length - 1, i < activeIndex.value ? activeIndex.value - 1 : activeIndex.value))
+    activeIndex.value = next
+    emit('patch', {
+      tracks: list,
+      activeIndex: next,
+      src: (list[next] || {}).src || '',
+      title: (list[next] || {}).title || ''
+    })
+  }
+  if (!trackList.value.length) store.showToast('歌单已清空')
 }
 
 // ---- 音源接入：本地上传（点击 / 拖拽）+ 网易云音乐（歌曲 ID / 外链解析） ----
@@ -180,7 +235,6 @@ function parseNetEase(v) {
 function connectNetEase() {
   const p = parseNetEase(neInput.value)
   if (!p) { store.showToast('请输入网易云歌曲 ID 或外链'); return }
-  if (getActiveAudioKey() === audioKey.value) { try { getCanvasPlayer().pause() } catch (e) { /* ignore */ } setActiveAudioKey(null) }
   // 官方外链直出端点：媒体元素播放不涉及跨域限制
   addTrack({
     src: 'https://music.163.com/song/media/outer/url?id=' + p.id + '.mp3',
@@ -260,7 +314,6 @@ function importAudioFile(f) {
   const rd = new FileReader()
   rd.onload = () => {
     const ext = (String(f.name).match(/\.([a-z0-9]{2,5})$/i) || [])[1] || 'mp3'
-    if (getActiveAudioKey() === audioKey.value) { try { getCanvasPlayer().pause() } catch (e) { /* ignore */ } setActiveAudioKey(null) }
     addTrack({
       src: String(rd.result || ''), title: String(f.name).replace(/\.[^.]+$/, ''),
       source: 'local', format: ext.toLowerCase()
@@ -288,16 +341,32 @@ const docTitle = computed(() => props.node.title || '未命名文档')
 // ---- 图片卡：单张图片，支持上传 / 拖入 / 点击查看大图 ----
 const imgView = ref(false)
 const imgBroken = ref(false)
-const IMG_MAX = 8 * 1024 * 1024
+const IMG_MAX = 20 * 1024 * 1024
+// 照片原图存在相册里（落库时由 IndexedDB blobs 仓承载），卡片只存 photoId 引用，
+// 避免 base64 挤爆画布节点所在的 localStorage
+const photoSrc = computed(() => {
+  const pid = d.value.photoId
+  if (!pid) return ''
+  const p = (store.live.photos || []).find((x) => x.id === pid)
+  return (p && p.dataUrl) || ''
+})
+const imgSrc = computed(() => d.value.src || photoSrc.value)
+const imgMissing = computed(() => !!d.value.photoId && !photoSrc.value && !d.value.src)
 function importImageFile(f) {
   if (!f) return
   if (f.type && !/^image\//.test(f.type)) { store.showToast('请选择图片文件'); return }
-  if (f.size > IMG_MAX) { store.showToast('图片过大（上限 8MB）'); return }
+  if (f.size > IMG_MAX) { store.showToast('图片过大（上限 20MB）'); return }
   const rd = new FileReader()
   rd.onload = () => {
+    const dataUrl = String(rd.result || '')
+    if (!dataUrl) return
+    // 原样存入相册（不压缩画质），卡片改为引用照片 ID
+    const baseName = String(f.name || '').replace(/\.[^.]+$/, '')
+    const r = store.addPhoto({ name: baseName || '照片', dataUrl, category: '', tags: '' })
+    if (!r || !r.ok) { store.showToast('图片保存失败'); return }
     imgBroken.value = false
-    emit('patch', { src: String(rd.result || ''), name: f.name })
-    store.showToast('图片已更新')
+    emit('patch', { src: '', photoId: r.photo.id, name: f.name })
+    store.showToast('图片已更新，并存入相册')
   }
   rd.readAsDataURL(f)
 }
@@ -313,44 +382,197 @@ function onImageDrop(ev) {
 }
 
 // ---- 时钟：实时刷新 ----
+// 从播放器单例同步一次状态（组件重建 / 从其它页面返回时用）
+function syncFromPlayer() {
+  if (!player) return
+  try {
+    const st = player.getState()
+    if (getActiveAudioKey() !== audioKey.value) return
+    playing.value = !!st.playing
+    if (st.current && st.current.track && typeof st.currentIndex === 'number' && st.currentIndex >= 0 && trackList.value.length) {
+      activeIndex.value = Math.min(st.currentIndex, trackList.value.length - 1)
+    }
+  } catch (e) { /* ignore */ }
+}
+let stopAfterEach = null
+
 const now = ref(Date.now())
 let timer = null
-onMounted(() => { if (kind.value === 'clock') timer = setInterval(() => { now.value = Date.now() }, 1000) })
+onMounted(() => {
+  if (kind.value === 'clock') {
+    timer = setInterval(() => { now.value = Date.now() }, 1000)
+    loadLunar()
+  }
+  if (kind.value === 'audio') {
+    // 恢复用户自己填过的歌单 ID（只存 ID，曲目仍走 6 小时缓存）
+    try {
+      const saved = localStorage.getItem(PLAYLIST_KEY)
+      if (saved) { playlistInput.value = saved; loadIdPlaylist({ silent: true }) }
+    } catch (e) { /* ignore */ }
+    const p = ensurePlayer() // 应用已保存的音量与播放模式
+    // 从播放页返回 / 组件重建时，播放器可能已在播放：主动同步一次播放态，
+    // 避免卡片显示成暂停（订阅只推送后续变化，首次状态不一定补齐）
+    syncFromPlayer()
+    // 路由切回画布（或是从播放页返回）时再同步，缓存组件不会重建
+    if (p && router.afterEach) {
+      stopAfterEach = router.afterEach((to) => {
+        if (to.name === 'music') return
+        setTimeout(syncFromPlayer, 120)
+      })
+    }
+  }
+})
 onUnmounted(() => {
   if (timer) clearInterval(timer)
-  // 卡片离场：若正由本卡播放则停掉；订阅解绑（播放器单例保留供其它卡复用）
-  if (getActiveAudioKey() === audioKey.value) {
-    try { getCanvasPlayer().pause() } catch (e) { /* ignore */ }
-    setActiveAudioKey(null)
-  }
+  // 卡片离场只解绑订阅，绝不自动暂停：播放器是全局单例，卡片滚出视口、
+  // 缩放剔除、切换页面时音乐都要继续，重新挂载后由 syncFromPlayer 恢复显示
   if (unsubProgress) { try { unsubProgress() } catch (e) { /* ignore */ } unsubProgress = null }
   if (unsubState) { try { unsubState() } catch (e) { /* ignore */ } unsubState = null }
+  if (stopAfterEach) { try { stopAfterEach() } catch (e) { /* ignore */ } stopAfterEach = null }
 })
 const p2 = (n) => String(n).padStart(2, '0')
-// 参考图：PM + 6 个独立数字块（HH : MM : SS）+ 底部中文日期
-const clockDigits = computed(() => {
+// 参考 ClockCard：日期顶部 / 24 小时制 HH:MM:SS（双圆点冒号）/ 农历底部
+const clockHms = computed(() => {
   const dt = new Date(now.value)
-  const h24 = dt.getHours()
-  const h12 = h24 % 12 === 0 ? 12 : h24 % 12
-  return [p2(h12)[0], p2(h12)[1], p2(dt.getMinutes())[0], p2(dt.getMinutes())[1], p2(dt.getSeconds())[0], p2(dt.getSeconds())[1]]
+  return [p2(dt.getHours()), p2(dt.getMinutes()), p2(dt.getSeconds())]
 })
-const meridiem = computed(() => (new Date(now.value).getHours() < 12 ? 'AM' : 'PM'))
 const clockDateCn = computed(() => {
   const dt = new Date(now.value)
-  return dt.getFullYear() + '年' + (dt.getMonth() + 1) + '月' + dt.getDate() + '日星期' + ['日', '一', '二', '三', '四', '五', '六'][dt.getDay()]
+  return dt.getFullYear() + ' 年 ' + (dt.getMonth() + 1) + ' 月 ' + dt.getDate() + ' 日 星期' + ['日', '一', '二', '三', '四', '五', '六'][dt.getDay()]
 })
-
-// ---- 音频控制：循环 / 静音（参考图底部 6 个细线图标） ----
-const loopOne = ref(false)
-const muted = ref(false)
-function toggleLoop() { loopOne.value = !loopOne.value }
-function toggleMute() {
-  const p = ensurePlayer()
-  muted.value = !muted.value
+// 农历：按天缓存，接口失败或被限流时静默隐藏（不拼 undefined）
+const lunarText = ref('')
+let lunarLoadedKey = ''
+async function loadLunar() {
+  const dt = new Date()
+  const dayKey = dt.getFullYear() + '-' + p2(dt.getMonth() + 1) + '-' + p2(dt.getDate())
+  if (lunarLoadedKey === dayKey) return
+  lunarLoadedKey = dayKey
   try {
-    if (typeof p.setVolume === 'function') p.setVolume(muted.value ? 0 : 0.6)
-    else if (p.volume && typeof p.volume.set === 'function') p.volume.set(muted.value ? 0 : 0.6)
-  } catch (e) { /* 播放器不支持音量控制时只保留 UI 状态 */ }
+    const hit = localStorage.getItem('eo:lunar:' + dayKey)
+    if (hit) { lunarText.value = hit; return }
+  } catch (e) { /* localStorage 不可用时跳过缓存 */ }
+  try {
+    const j = await fetch('https://uapis.cn/api/v1/misc/lunartime').then((r) => r.json())
+    const parts = []
+    if (j && j.lunar_month_cn && j.lunar_day_cn) parts.push('农历' + j.lunar_month_cn + j.lunar_day_cn)
+    if (j && j.ganzhi_year) parts.push(j.ganzhi_year + '年')
+    const txt = parts.join(' · ')
+    if (!txt) return
+    lunarText.value = txt
+    try { localStorage.setItem('eo:lunar:' + dayKey, txt) } catch (e) { /* 忽略写入失败 */ }
+  } catch (e) { /* 农历获取失败静默隐藏 */ }
+}
+
+// ---- 播放模式 / 音量 / 沉浸歌词 ----
+const MODE_KEY = 'eo:music_mode'
+const VOL_KEY = 'eo:music_volume'
+const MUTE_KEY = 'eo:music_muted'
+// 0 顺序循环 / 1 单曲循环 / 2 随机（默认顺序循环，符合「放着听」的直觉）
+const playMode = ref((() => {
+  try { const v = Number(localStorage.getItem(MODE_KEY)); return v === 1 || v === 2 ? v : 0 } catch (e) { return 0 }
+})())
+const volume = ref((() => {
+  try {
+    const v = Number(localStorage.getItem(VOL_KEY))
+    return Number.isFinite(v) && v >= 0 && v <= 1 ? v : 0.6
+  } catch (e) { return 0.6 }
+})())
+const muted = ref((() => {
+  try { return localStorage.getItem(MUTE_KEY) === '1' || volume.value === 0 } catch (e) { return volume.value === 0 }
+})())
+const modeTitle = computed(() => ['顺序循环', '单曲循环', '随机播放'][playMode.value])
+
+function cycleMode() {
+  playMode.value = (playMode.value + 1) % 3
+  try { localStorage.setItem(MODE_KEY, String(playMode.value)) } catch (e) { /* ignore */ }
+  applyPlayMode()
+  store.showToast(modeTitle.value)
+}
+function onVolInput(e) {
+  const v = Math.max(0, Math.min(100, Number(e.target.value))) / 100
+  volume.value = v
+  muted.value = v === 0
+  const p = ensurePlayer()
+  try {
+    // 先在未静音状态下落音量，音频节点才会真正更新
+    p.setMuted(muted.value)
+    if (!muted.value) p.setVolume(v)
+  } catch (err) { /* ignore */ }
+  try {
+    localStorage.setItem(VOL_KEY, String(v))
+    localStorage.setItem(MUTE_KEY, String(muted.value ? 1 : 0))
+  } catch (err) { /* ignore */ }
+}
+function toggleMute() {
+  muted.value = !muted.value
+  // 静音只切静音标记，不再把音量写成 0；取消静音时保证音量回到可听见的值
+  if (!muted.value && volume.value === 0) volume.value = 0.6
+  const p = ensurePlayer()
+  try {
+    // 先解除静音再落音量：Howler 静音时不会更新音频节点音量，反序会静音无声
+    p.setMuted(muted.value)
+    if (!muted.value) p.setVolume(volume.value)
+  } catch (e) { /* ignore */ }
+  try {
+    localStorage.setItem(VOL_KEY, String(volume.value))
+    localStorage.setItem(MUTE_KEY, String(muted.value ? 1 : 0))
+  } catch (e) { /* ignore */ }
+}
+
+// ---- 独立播放页：把当前歌单与播放位置交给 /music（返回画布时音乐继续播放） ----
+const QUEUE_KEY = 'eo:music_queue'
+function goPlayer() {
+  if (!trackList.value.length) { store.showToast('请先添加曲目'); return }
+  const tracks = trackList.value.map((t, i) => ({
+    title: t.title || ('曲目 ' + (i + 1)),
+    artist: t.artist || '',
+    src: t.src,
+    format: formatOf(t),
+    cover: t.cover || '',
+    lrc: t.lrc || '',
+    source: t.source || ''
+  }))
+  const startIndex = Math.max(0, Math.min(tracks.length - 1, activeIndex.value))
+  try {
+    localStorage.setItem(QUEUE_KEY, JSON.stringify({ tracks, startIndex, activeKey: audioKey.value, playing: playing.value }))
+  } catch (e) { /* 配额满时忽略 */ }
+  router.push('/music')
+}
+
+// ---- 网易云歌单 ID：由用户自己填，链接 / 纯数字都能识别 ----
+function parsePlaylistId(v) {
+  const s = String(v || '').trim()
+  if (!s) return ''
+  if (/^\d{5,}$/.test(s)) return s
+  const m = s.match(/playlist[\/?](?:.*?[?&]id=)?(\d{5,})/) || s.match(/[?&]id=(\d{5,})/)
+  return m ? m[1] : ''
+}
+async function loadIdPlaylist(opts = {}) {
+  const silent = Boolean(opts && opts.silent)
+  const id = parsePlaylistId(playlistInput.value)
+  if (!id) { store.showToast('请输入网易云歌单 ID 或歌单链接'); return }
+  meting.state = 'loading'
+  meting.err = ''
+  playlistInput.value = id
+  try { localStorage.setItem(PLAYLIST_KEY, id) } catch (e) { /* ignore */ }
+  const list = await loadPlaylist(id)
+  meting.tracks = list || []
+  if (meting.tracks.length) {
+    meting.state = 'ok'
+    // 进入画布时自动恢复歌单不弹提示，只有手动“拉取”才提示
+    if (!silent) store.showToast('歌单已加载：' + meting.tracks.length + ' 首')
+  } else {
+    meting.state = 'fail'
+    meting.err = '没取到歌曲（歌单可能私密，或公共接口限流）'
+  }
+}
+function clearPlaylist() {
+  meting.tracks = []
+  meting.state = 'idle'
+  meting.err = ''
+  activeIndex.value = Math.max(0, Math.min(localTracks.value.length - 1, activeIndex.value))
+  try { localStorage.removeItem(PLAYLIST_KEY) } catch (e) { /* ignore */ }
 }
 function openList() { listOpen.value = true; favOpen.value = false }
 function openFav() { favOpen.value = true; listOpen.value = false }
@@ -363,26 +585,25 @@ function openFav() { favOpen.value = true; listOpen.value = false }
       <div class="cb-md"><MarkdownView :text="d.markdown || d.text || '…'" /></div>
     </div>
 
-    <!-- 时钟：AM/PM + 6 个数字块 HH:MM:SS + 中文日期（参考图 7/8） -->
+    <!-- 时钟：日期顶 / 24h 超大时间（双圆点冒号）/ 农历底（参考 ClockCard） -->
     <div v-else-if="kind === 'clock'" class="cb-clock">
-      <span class="cb-clock__mer">{{ meridiem }}</span>
-      <div class="cb-clock__row">
-        <span class="cb-clock__d">{{ clockDigits[0] }}</span>
-        <span class="cb-clock__d">{{ clockDigits[1] }}</span>
-        <span class="cb-clock__sep">:</span>
-        <span class="cb-clock__d">{{ clockDigits[2] }}</span>
-        <span class="cb-clock__d">{{ clockDigits[3] }}</span>
-        <span class="cb-clock__sep">:</span>
-        <span class="cb-clock__d">{{ clockDigits[4] }}</span>
-        <span class="cb-clock__d">{{ clockDigits[5] }}</span>
-      </div>
       <span class="cb-clock__date">{{ clockDateCn }}</span>
+      <div class="cb-clock__row">
+        <span class="cb-clock__t">{{ clockHms[0] }}</span>
+        <span class="cb-clock__sep"><i></i><i></i></span>
+        <span class="cb-clock__t">{{ clockHms[1] }}</span>
+        <span class="cb-clock__sep"><i></i><i></i></span>
+        <span class="cb-clock__t">{{ clockHms[2] }}</span>
+      </div>
+      <span v-if="lunarText" class="cb-clock__lunar">{{ lunarText }}</span>
     </div>
 
     <!-- 文档卡：整篇长文，卡片内滚动阅读 -->
     <div v-else-if="kind === 'doc'" class="cb-doc">
       <div class="cb-doc__head">
         <span class="cb-doc__t">{{ docTitle }}</span>
+        <button class="cb-doc__bind" :title="d.noteId ? '已绑定笔记，点击更换' : '绑定笔记后可参与关联与连线'"
+          @pointerdown.stop @click.stop="bindOpen = true">{{ d.noteId ? '已绑笔记' : '绑定笔记' }}</button>
         <span class="cb-doc__n">{{ docBody ? docBody.length + ' 字' : '空' }}</span>
       </div>
       <div v-if="docBody" class="cb-doc__body" @wheel.stop>{{ docBody }}</div>
@@ -394,8 +615,8 @@ function openFav() { favOpen.value = true; listOpen.value = false }
 
     <!-- 图片卡：单张图片，点击看大图，可拖入替换 -->
     <div v-else-if="kind === 'image'" class="cb-img" @dragover.prevent.stop @drop.prevent.stop="onImageDrop">
-      <template v-if="d.src && !imgBroken">
-        <img class="cb-img__el" :src="d.src" :style="{ objectFit: d.fit || 'cover' }" draggable="false"
+      <template v-if="imgSrc && !imgBroken">
+        <img class="cb-img__el" :src="imgSrc" :style="{ objectFit: d.fit || 'cover' }" draggable="false"
           @click.stop="imgView = true" @error="imgBroken = true" />
         <label class="cb-img__btn" title="更换图片" @pointerdown.stop @click.stop>
           <Icon name="upload" :size="13" />
@@ -404,7 +625,7 @@ function openFav() { favOpen.value = true; listOpen.value = false }
       </template>
       <label v-else class="cb-img__empty" @pointerdown.stop @click.stop>
         <Icon name="image" :size="24" />
-        <span>{{ imgBroken ? '图片加载失败，点击更换' : '点击上传，或把图片拖进来' }}</span>
+        <span>{{ imgMissing ? '图片已删除，点击更换' : (imgBroken ? '图片加载失败，点击更换' : '点击上传，或把图片拖进来') }}</span>
         <input type="file" accept="image/*" style="display: none" @change="onImageFile" />
       </label>
     </div>
@@ -421,8 +642,9 @@ function openFav() { favOpen.value = true; listOpen.value = false }
         <div class="cb-audio__time"><span>{{ fmt(cur) }}</span><span>{{ fmt(dur || 0) }}</span></div>
         <div class="cb-audio__ctl">
           <span class="cb-audio__grp">
-            <button class="cb-audio__b" :class="{ on: loopOne }" title="单曲循环" @pointerdown.stop @click.stop="toggleLoop">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8a4 4 0 0 1 4-4h11" /><path d="M15 1.5l3 3-3 3" /><path d="M21 16a4 4 0 0 1-4 4H6" /><path d="M9 14.5l-3 3 3 3" /></svg>
+            <button class="cb-audio__b" :class="{ on: playMode !== 0 }" :title="modeTitle" @pointerdown.stop @click.stop="cycleMode">
+              <svg v-if="playMode === 2" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h4l7 10h4" /><path d="M17 4.5l3 2.5-3 2.5" /><path d="M4 17h4l2.4-3.4" /><path d="M13.4 9.4L15 7h5.4" /></svg>
+              <svg v-else viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8a4 4 0 0 1 4-4h11" /><path d="M15 1.5l3 3-3 3" /><path d="M21 16a4 4 0 0 1-4 4H6" /><path d="M9 14.5l-3 3 3 3" /><text v-if="playMode === 1" x="12" y="15.5" text-anchor="middle" font-size="9" font-weight="700" fill="currentColor" stroke="none">1</text></svg>
             </button>
             <button class="cb-audio__b" :class="{ on: muted }" title="静音" @pointerdown.stop @click.stop="toggleMute">
               <svg v-if="!muted" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z" /><path d="M16.5 8.5a6 6 0 0 1 0 7" /><path d="M19 6a9.5 9.5 0 0 1 0 12" /></svg>
@@ -442,6 +664,9 @@ function openFav() { favOpen.value = true; listOpen.value = false }
             </button>
           </span>
           <span class="cb-audio__grp cb-audio__grp--end">
+            <button class="cb-audio__b" title="播放页" @pointerdown.stop @click.stop="goPlayer">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9" /><path d="M4 12h9" /><path d="M4 17h5" /><circle cx="18.4" cy="15.4" r="2.6" /><path d="M21 15.4V7.6" /></svg>
+            </button>
             <button class="cb-audio__b" title="歌单 / 音源" @pointerdown.stop @click.stop="openList">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h11" /><path d="M4 11h11" /><path d="M4 16h7" /><circle cx="18" cy="17" r="2.6" /><path d="M20.6 17V10" /></svg>
             </button>
@@ -453,59 +678,95 @@ function openFav() { favOpen.value = true; listOpen.value = false }
         <span class="cb-audio__label" :style="curCover ? { backgroundImage: 'url(' + curCover + ')' } : {}"></span>
         <span class="cb-audio__hole"></span>
       </div>
-
-      <!-- 歌单浮层：曲目 + 上传 / 收藏 / 音源接入（原有能力全部保留） -->
-      <div v-if="listOpen" class="cb-audio__panel" @pointerdown.stop @wheel.stop>
-        <div class="cb-audio__phead">
-          <span>歌单 · {{ trackList.length }} 首</span>
-          <button @click.stop="listOpen = false"><Icon name="close" :size="12" /></button>
-        </div>
-        <div v-if="!trackList.length" class="cb-audio__pempty">还没有曲目，上传本地音频或从收藏添加</div>
-        <div v-for="(t, i) in trackList" :key="i" class="cb-audio__row" :class="{ on: i === activeIndex }">
-          <button class="cb-audio__row-main" @click.stop="playAt(i)">
-            <span class="cb-audio__idx">{{ i + 1 }}</span>
-            <span class="cb-audio__row-t">{{ t.title || ('曲目 ' + (i + 1)) }}</span>
-            <span v-if="i === activeIndex && playing" class="cb-audio__eq"><i></i><i></i><i></i></span>
-          </button>
-          <button class="cb-audio__row-del" title="移出歌单" @click.stop="removeTrack(i)"><Icon name="trash" :size="11" /></button>
-        </div>
-        <div class="cb-audio__pacts">
-          <label class="cb-audio__srcbtn" title="上传本地音频（可多选，也可直接拖入卡片）">
-            <Icon name="upload" :size="12" />
-            <input type="file" accept="audio/*" multiple style="display: none" @change="onAudioFiles" />
-          </label>
-          <button class="cb-audio__pact" @click.stop="openFav">收藏夹</button>
-          <button class="cb-audio__pact" @click.stop="saveToCollection">存收藏</button>
-        </div>
-        <div class="cb-audio__ne">
-          <input class="cb-audio__ne-i" v-model="neInput" placeholder="网易云 / QQ 音乐 链接或 ID" @pointerdown.stop @keydown.enter.stop.prevent="connectSmart" />
-          <button class="cb-audio__srcbtn" title="接入音源（自动识别网易云 / QQ 音乐）" @pointerdown.stop @click.stop="connectSmart"><Icon name="link" :size="12" /></button>
-        </div>
-      </div>
-
-      <!-- 收藏联动浮层 -->
-      <div v-if="favOpen" class="cb-audio__panel" @pointerdown.stop @wheel.stop>
-        <div class="cb-audio__phead">
-          <span>从收藏添加</span>
-          <button @click.stop="favOpen = false"><Icon name="close" :size="12" /></button>
-        </div>
-        <div v-if="!favTracks.length" class="cb-audio__pempty">收藏里没有带音频链接的条目</div>
-        <button v-for="c in favTracks" :key="c.id" class="cb-audio__fav" @click.stop="addFromCollection(c)">
-          <Icon name="star" :size="11" />
-          <span>{{ c.title || '未命名收藏' }}</span>
-        </button>
-        <div class="cb-audio__pacts">
-          <button class="cb-audio__pact" @click.stop="openList">返回歌单</button>
-        </div>
-      </div>
     </div>
 
     <div v-else class="cb-text">{{ meta.label }}</div>
 
+    <!-- 歌单 / 收藏：居中玻璃弹窗（Teleport 到 body，避开画布卡片的 transform 定位） -->
+    <Teleport to="body">
+      <GlassBottomSheet :show="listOpen" :title="'歌单 · ' + trackList.length + ' 首'" @close="listOpen = false">
+        <div class="cb-panel" @wheel.stop>
+          <!-- 网易云歌单：ID 由用户自己填，公共 Meting 接口免 Key 拉取 -->
+          <div class="cb-audio__ne">
+            <input class="cb-audio__ne-i" v-model="playlistInput" placeholder="网易云歌单 ID / 歌单链接（自己填）" @keydown.enter.prevent="loadIdPlaylist" />
+            <button class="cb-audio__pull" title="加载网易云歌单" @click="loadIdPlaylist">拉取</button>
+          </div>
+          <div class="cb-audio__phint" :class="{ err: meting.state === 'fail' }">
+            <template v-if="meting.state === 'loading'">正在拉取歌单…</template>
+            <template v-else-if="meting.state === 'fail'">{{ meting.err }}</template>
+            <template v-else-if="meting.tracks.length">网易云 {{ meting.tracks.length }} 首 · <button class="cb-audio__inline" @click="clearPlaylist">清除</button></template>
+            <template v-else>填歌单 ID 后可播放整张网易云歌单</template>
+          </div>
+          <div v-if="!trackList.length" class="cb-audio__pempty">还没有曲目，上传本地音频或从收藏添加</div>
+          <div v-else class="cb-panel__list">
+            <div v-for="(t, i) in trackList" :key="i" class="cb-audio__row" :class="{ on: i === activeIndex }">
+              <button class="cb-audio__row-main" @click="playAt(i)">
+                <span class="cb-audio__idx">{{ i + 1 }}</span>
+                <span class="cb-audio__row-t">{{ t.title || ('曲目 ' + (i + 1)) }}</span>
+                <span v-if="i === activeIndex && playing" class="cb-audio__eq"><i></i><i></i><i></i></span>
+              </button>
+              <button class="cb-audio__row-del" title="移出歌单" @click="removeTrack(i)"><Icon name="trash" :size="11" /></button>
+            </div>
+          </div>
+          <div class="cb-audio__vol">
+            <button class="cb-audio__vbtn" :title="muted ? '取消静音' : '静音'" @click="toggleMute">
+              <svg v-if="!muted" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z" /><path d="M16.5 8.5a6 6 0 0 1 0 7" /><path d="M19 6a9.5 9.5 0 0 1 0 12" /></svg>
+              <svg v-else viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z" /><path d="M16 9l5 6" /><path d="M21 9l-5 6" /></svg>
+            </button>
+            <input class="cb-audio__range" type="range" min="0" max="100" step="1"
+              :value="Math.round((muted ? 0 : volume) * 100)"
+              @input="onVolInput" />
+            <span class="cb-audio__vnum">{{ Math.round((muted ? 0 : volume) * 100) }}</span>
+          </div>
+          <div class="cb-audio__pacts">
+            <label class="cb-audio__srcbtn" title="上传本地音频（可多选，也可直接拖入卡片）">
+              <Icon name="upload" :size="12" />
+              <input type="file" accept="audio/*" multiple style="display: none" @change="onAudioFiles" />
+            </label>
+            <button class="cb-audio__pact" @click="openFav">收藏夹</button>
+            <button class="cb-audio__pact" @click="saveToCollection">存收藏</button>
+          </div>
+          <div class="cb-audio__ne">
+            <input class="cb-audio__ne-i" v-model="neInput" placeholder="网易云 / QQ 音乐 链接或 ID" @keydown.enter.prevent="connectSmart" />
+            <button class="cb-audio__srcbtn" title="接入音源（自动识别网易云 / QQ 音乐）" @click="connectSmart"><Icon name="link" :size="12" /></button>
+          </div>
+        </div>
+      </GlassBottomSheet>
+
+      <GlassBottomSheet :show="favOpen" title="从收藏添加" @close="favOpen = false">
+        <div class="cb-panel" @wheel.stop>
+          <div v-if="!favTracks.length" class="cb-audio__pempty">收藏里没有带音频链接的条目</div>
+          <div v-else class="cb-panel__list">
+            <button v-for="c in favTracks" :key="c.id" class="cb-audio__fav" @click="addFromCollection(c)">
+              <Icon name="star" :size="11" />
+              <span>{{ c.title || '未命名收藏' }}</span>
+            </button>
+          </div>
+          <div class="cb-audio__pacts">
+            <button class="cb-audio__pact" @click="openList">返回歌单</button>
+          </div>
+        </div>
+      </GlassBottomSheet>
+    </Teleport>
+
+    <!-- 文档卡绑定笔记：绑定后这张卡可参与画布连线 ↔ 功能关联 -->
+    <Teleport to="body">
+      <GlassBottomSheet :show="bindOpen" title="绑定笔记到这张文档卡" @close="bindOpen = false">
+        <div class="cb-bind">
+          <button class="cb-bind__new" @click="createAndBindNote">用当前正文新建一条笔记并绑定</button>
+          <div class="cb-bind__lab">或选择已有笔记</div>
+          <div class="cb-bind__list">
+            <button v-for="m in store.live.memos" :key="m.id" class="cb-bind__item" @click="bindNote(m.id)">{{ m.title || '未命名笔记' }}</button>
+            <div v-if="!store.live.memos.length" class="cb-bind__empty">还没有笔记</div>
+          </div>
+        </div>
+      </GlassBottomSheet>
+    </Teleport>
+
     <!-- 图片大图预览 -->
     <Teleport to="body">
-      <div v-if="imgView && d.src" class="cb-lightbox" @click="imgView = false" @wheel.stop.prevent>
-        <img :src="d.src" alt="" />
+      <div v-if="imgView && imgSrc" class="cb-lightbox" @click="imgView = false" @wheel.stop.prevent>
+        <img :src="imgSrc" alt="" />
         <button class="cb-lightbox__x" title="关闭" @click.stop="imgView = false"><Icon name="close" :size="18" /></button>
       </div>
     </Teleport>
@@ -519,38 +780,55 @@ function openFav() { favOpen.value = true; listOpen.value = false }
 .cb-md :deep(.md) { font-size: 12px; line-height: 1.5; color: var(--ink-2, #86868B); }
 .cb-md :deep(h1), .cb-md :deep(h2), .cb-md :deep(h3) { font-size: 13px; margin: 2px 0 6px; }
 
-/* ---- 时钟：AM/PM + 6 个数字块 + 中文日期 ---- */
+/* ---- 时钟：日期顶 / 超大 24h 时间 + 双圆点冒号 / 农历底 ---- */
 .cb-clock {
   position: relative; height: 100%; width: 100%; overflow: hidden; container-type: size; container-name: cb;
   border-radius: 12px;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: clamp(6px, 2.8cqh, 16px);
+  gap: clamp(6px, 2.6cqh, 14px);
   color: var(--cb-ink, #2A2A2C);
-}
-.cb-clock__mer {
-  font-size: clamp(8px, 2.6cqw, 13px); font-weight: 700; letter-spacing: .18em;
-  color: var(--cb-ink-2, rgba(60, 60, 62, .55));
-}
-.cb-clock__row { display: flex; align-items: center; gap: clamp(2px, .8cqw, 5px); }
-.cb-clock__d {
-  display: flex; align-items: center; justify-content: center;
-  min-width: clamp(17px, 8.6cqw, 40px);
-  height: clamp(26px, 16cqh, 58px);
-  border-radius: clamp(4px, 1.6cqw, 9px);
-  background: #1F2A3B; color: #F2F4F8;
-  font-size: clamp(15px, min(8.4cqw, 12cqh), 34px); font-weight: 700; line-height: 1;
-  font-variant-numeric: tabular-nums;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .1), 0 2px 7px rgba(0, 0, 0, .18);
-}
-.cb-clock__sep {
-  font-size: clamp(12px, 5.4cqw, 24px); font-weight: 700; line-height: 1;
-  color: var(--cb-ink-2, rgba(60, 60, 62, .45)); padding: 0 clamp(1px, .5cqw, 3px);
 }
 .cb-clock__date {
   font-size: clamp(8.5px, 2.9cqw, 13.5px); font-weight: 600;
   color: var(--cb-ink-2, rgba(60, 60, 62, .55)); font-variant-numeric: tabular-nums;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
 }
-@container cb (max-height: 110px) { .cb-clock__mer { display: none; } }
+/* 字号放在整行：冒号的 1em / .26em 圆点间距随数字一起缩放 */
+.cb-clock__row {
+  display: flex; align-items: center; justify-content: center;
+  gap: clamp(1px, .4cqw, 3px); max-width: 100%;
+  font-size: clamp(22px, min(11.5cqw, 15cqh), 46px);
+}
+.cb-clock__t {
+  font-weight: 700; line-height: 1; letter-spacing: .02em;
+  font-variant-numeric: tabular-nums;
+}
+/* 主题色双圆点冒号：middle 锚点后补偿数字字形中心 */
+.cb-clock__sep {
+  display: inline-flex; flex-direction: column; justify-content: center; align-items: center;
+  vertical-align: middle; height: 1em; gap: .26em; margin: 0 .1em;
+  transform: translateY(-.09em);
+  color: var(--cb-ink-2, rgba(60, 60, 62, .45));
+}
+.cb-clock__sep i {
+  display: block; width: .11em; height: .11em; border-radius: 50%;
+  background: currentColor; opacity: .55;
+}
+.cb-clock__lunar {
+  font-size: clamp(8px, 2.7cqw, 12px);
+  color: var(--cb-ink-2, rgba(60, 60, 62, .55)); font-variant-numeric: tabular-nums;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
+}
+
+.cb-doc__bind { flex: none; font-size: 10px; font-weight: 700; color: var(--eo-ink-soft); background: var(--eo-chip); border: 1px solid var(--eo-glass-border); border-radius: 999px; padding: 2px 7px; cursor: pointer; }
+.cb-doc__bind:hover { color: var(--eo-ink); background: rgba(44,44,44,.1); }
+.cb-bind { width: min(76vw, 380px); display: flex; flex-direction: column; gap: 10px; }
+.cb-bind__new { font-size: 13px; font-weight: 600; color: var(--eo-ink); background: var(--eo-chip); border: 1px solid var(--eo-glass-border); border-radius: 10px; padding: 10px; cursor: pointer; }
+.cb-bind__lab { font-size: 11px; color: var(--eo-ink-soft); }
+.cb-bind__list { max-height: 260px; overflow: auto; display: flex; flex-direction: column; gap: 5px; }
+.cb-bind__item { text-align: left; font-size: 13px; color: var(--eo-ink); background: transparent; border: 1px solid var(--eo-glass-border); border-radius: 8px; padding: 8px 10px; cursor: pointer; }
+.cb-bind__item:hover { background: var(--eo-chip); }
+.cb-bind__empty { font-size: 12px; color: var(--eo-ink-soft); }
 
 /* ---- 文档卡 ---- */
 .cb-doc { height: 100%; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
@@ -569,8 +847,8 @@ function openFav() { favOpen.value = true; listOpen.value = false }
   color: #9A958C; font-size: 12px; text-align: center; padding: 0 12px; line-height: 1.6;
 }
 
-/* ---- 图片卡 ---- */
-.cb-img { position: relative; height: 100%; min-height: 0; border-radius: 10px; overflow: hidden; background: rgba(44, 44, 44, .06); }
+/* ---- 图片卡：白边相纸（卡片容器已是白底 + 7px 内边距，这里只负责内侧圆角） ---- */
+.cb-img { position: relative; height: 100%; min-height: 0; border-radius: 8px; overflow: hidden; background: #fff; }
 .cb-img__el { display: block; width: 100%; height: 100%; cursor: zoom-in; }
 .cb-img__btn {
   position: absolute; right: 6px; bottom: 6px; width: 26px; height: 26px; border-radius: 50%;
@@ -659,47 +937,63 @@ function openFav() { favOpen.value = true; listOpen.value = false }
 @keyframes cb-spin { to { transform: translateY(-50%) rotate(360deg); } }
 .cb-audio audio { display: none; }
 
-/* 歌单 / 收藏浮层 */
-.cb-audio__panel {
-  position: absolute; inset: 2px; z-index: 5; display: flex; flex-direction: column; gap: 3px;
-  padding: 8px 9px 10px; border-radius: 12px; overflow: auto;
-  background: rgba(32, 18, 18, .94); backdrop-filter: blur(6px);
-  box-shadow: 0 10px 26px rgba(0, 0, 0, .28), inset 0 0 0 1px rgba(255, 255, 255, .09);
-}
-.cb-audio__phead { display: flex; align-items: center; justify-content: space-between; font-size: 11px; font-weight: 700; color: rgba(255, 255, 255, .92); margin-bottom: 3px; flex: none; }
-.cb-audio__phead button { border: 0; background: transparent; color: rgba(255, 255, 255, .7); cursor: pointer; display: flex; padding: 2px; }
-.cb-audio__pempty { flex: 1; display: flex; align-items: center; justify-content: center; color: rgba(255, 255, 255, .5); font-size: 11px; text-align: center; line-height: 1.6; padding: 6px 8px; }
-/* 浮层底部：上传 / 收藏入口 + 音源输入 */
-.cb-audio__pacts { display: flex; align-items: center; gap: 5px; flex: none; margin-top: 2px; }
+/* 歌单 / 收藏：居中玻璃弹窗内的排版（原来贴在卡片上的浮层已改为全局弹窗） */
+.cb-panel { display: flex; flex-direction: column; gap: 9px; }
+.cb-panel__list { display: flex; flex-direction: column; gap: 4px; max-height: 42vh; overflow: auto; overscroll-behavior: contain; }
+.cb-panel__list::-webkit-scrollbar { width: 5px; }
+.cb-panel__list::-webkit-scrollbar-thumb { background: rgba(44, 44, 44, .18); border-radius: 99px; }
+.cb-audio__pempty { display: flex; align-items: center; justify-content: center; color: var(--eo-ink-soft, #86868B); font-size: 12px; text-align: center; line-height: 1.6; padding: 22px 8px; }
+/* 弹窗底部：上传 / 收藏入口 + 音源输入 */
+.cb-audio__pacts { display: flex; align-items: center; gap: 6px; flex: none; }
 .cb-audio__pact {
-  flex: none; padding: 3px 8px; border: 0; border-radius: 99px; cursor: pointer;
-  background: rgba(255, 255, 255, .16); color: rgba(255, 255, 255, .92); font-size: 10px; font-weight: 700;
+  flex: none; padding: 5px 11px; border: 0; border-radius: 99px; cursor: pointer;
+  background: rgba(44, 44, 44, .08); color: var(--eo-ink, #2C2C2C); font-size: 11px; font-weight: 700;
 }
-.cb-audio__pact:hover { background: rgba(255, 255, 255, .3); }
+.cb-audio__pact:hover { background: rgba(44, 44, 44, .14); }
 .cb-audio__srcbtn {
-  width: 22px; height: 22px; border-radius: 50%; flex: none; cursor: pointer;
+  width: 26px; height: 26px; border-radius: 50%; flex: none; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
-  background: rgba(255, 255, 255, .2); color: rgba(255, 255, 255, .92); border: 0;
+  background: rgba(44, 44, 44, .08); color: var(--eo-ink, #2C2C2C); border: 0;
 }
-.cb-audio__srcbtn:hover { background: rgba(255, 255, 255, .34); }
-.cb-audio__ne { display: flex; align-items: center; gap: 4px; flex: none; }
+.cb-audio__srcbtn:hover { background: rgba(44, 44, 44, .14); }
+.cb-audio__ne { display: flex; align-items: center; gap: 6px; flex: none; }
 .cb-audio__ne-i {
-  flex: 1; min-width: 0; padding: 4px 8px; border-radius: 99px; border: 0; outline: none;
-  background: rgba(255, 255, 255, .14); color: #fff; font-size: 10px;
+  flex: 1; min-width: 0; padding: 8px 12px; border-radius: 99px; border: 0; outline: none;
+  background: rgba(44, 44, 44, .06); color: var(--eo-ink, #2C2C2C); font-size: 12px;
 }
-.cb-audio__ne-i::placeholder { color: rgba(255, 255, 255, .55); }
-.cb-audio__ne-i:focus { background: rgba(255, 255, 255, .22); }
-.cb-audio__row { display: flex; align-items: center; gap: 2px; flex: none; border-radius: 7px; background: rgba(255, 255, 255, .05); }
-.cb-audio__row.on { background: rgba(255, 255, 255, .16); }
+.cb-audio__ne-i::placeholder { color: var(--eo-ink-soft, #86868B); }
+.cb-audio__ne-i:focus { background: rgba(44, 44, 44, .10); }
+.cb-audio__pull {
+  flex: none; padding: 7px 13px; border: 0; border-radius: 99px; cursor: pointer;
+  background: #EC4A42; color: #fff; font-size: 11px; font-weight: 700;
+}
+.cb-audio__pull:hover { background: #F05A53; }
+.cb-audio__phint { flex: none; font-size: 11px; line-height: 1.5; color: var(--eo-ink-soft, #86868B); padding: 0 2px; }
+.cb-audio__phint.err { color: #C4552F; }
+.cb-audio__inline {
+  border: 0; background: transparent; padding: 0 2px; cursor: pointer;
+  color: var(--eo-ink-soft, #86868B); font-size: 11px; text-decoration: underline;
+}
+/* 音量：歌单弹窗底部一行，不改动用大标题与图标区的既有节奏 */
+.cb-audio__vol { display: flex; align-items: center; gap: 8px; flex: none; }
+.cb-audio__vbtn {
+  width: 20px; height: 20px; flex: none; padding: 0; border: 0; background: transparent;
+  color: var(--eo-ink-soft, #86868B); cursor: pointer; display: flex;
+}
+.cb-audio__vbtn svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.cb-audio__range { flex: 1; min-width: 0; height: 14px; accent-color: #EC4A42; cursor: pointer; }
+.cb-audio__vnum { flex: none; width: 26px; text-align: right; font-size: 10.5px; color: var(--eo-ink-soft, #86868B); font-variant-numeric: tabular-nums; }
+.cb-audio__row { display: flex; align-items: center; gap: 2px; flex: none; border-radius: 9px; background: rgba(44, 44, 44, .05); }
+.cb-audio__row.on { background: rgba(236, 74, 66, .10); }
 .cb-audio__row-main {
-  flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; padding: 5px 6px; border: 0; background: transparent;
-  color: rgba(255, 255, 255, .88); font-size: 11px; text-align: left; cursor: pointer;
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 7px; padding: 8px 9px; border: 0; background: transparent;
+  color: var(--eo-ink, #2C2C2C); font-size: 12px; text-align: left; cursor: pointer;
 }
-.cb-audio__idx { flex: none; width: 14px; font-size: 9.5px; color: rgba(255, 255, 255, .45); font-variant-numeric: tabular-nums; }
-.cb-audio__row.on .cb-audio__idx { color: rgba(255, 255, 255, .8); }
+.cb-audio__idx { flex: none; width: 16px; font-size: 10.5px; color: var(--eo-ink-soft, #86868B); font-variant-numeric: tabular-nums; }
+.cb-audio__row.on .cb-audio__idx { color: #EC4A42; font-weight: 700; }
 .cb-audio__row-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cb-audio__row-del { flex: none; width: 20px; height: 20px; border: 0; border-radius: 50%; background: transparent; color: rgba(255, 255, 255, .45); cursor: pointer; display: flex; align-items: center; justify-content: center; }
-.cb-audio__row-del:hover { background: rgba(255, 255, 255, .14); color: #fff; }
+.cb-audio__row-del { flex: none; width: 22px; height: 22px; margin-right: 4px; border: 0; border-radius: 50%; background: transparent; color: var(--eo-ink-soft, #86868B); cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.cb-audio__row-del:hover { background: rgba(44, 44, 44, .12); color: var(--eo-ink, #2C2C2C); }
 .cb-audio__eq { flex: none; display: flex; align-items: flex-end; gap: 1.5px; height: 9px; }
 .cb-audio__eq i { display: block; width: 2px; background: #E8B86D; border-radius: 1px; animation: cb-eq .9s ease-in-out infinite; }
 .cb-audio__eq i:nth-child(1) { height: 5px; animation-delay: 0s; }
@@ -707,10 +1001,10 @@ function openFav() { favOpen.value = true; listOpen.value = false }
 .cb-audio__eq i:nth-child(3) { height: 6px; animation-delay: .36s; }
 @keyframes cb-eq { 0%, 100% { transform: scaleY(.5); } 50% { transform: scaleY(1); } }
 .cb-audio__fav {
-  display: flex; align-items: center; gap: 6px; flex: none; padding: 6px 7px; border: 0; border-radius: 7px;
-  background: rgba(255, 255, 255, .06); color: rgba(255, 255, 255, .88); font-size: 11px; text-align: left; cursor: pointer;
+  display: flex; align-items: center; gap: 8px; flex: none; padding: 8px 10px; border: 0; border-radius: 9px;
+  background: rgba(44, 44, 44, .05); color: var(--eo-ink, #2C2C2C); font-size: 12px; text-align: left; cursor: pointer;
 }
-.cb-audio__fav:hover { background: rgba(255, 255, 255, .16); }
+.cb-audio__fav:hover { background: rgba(44, 44, 44, .12); }
 .cb-audio__fav span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* 图片大图预览 */

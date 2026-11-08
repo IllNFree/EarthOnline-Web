@@ -633,51 +633,60 @@ export class SpaceRenderer {
     const hover = state.hoverId === n.id
     const lod = s < 0.3 ? 0 : (s < 0.55 ? 1 : 2)
     const color = n.color || '#C8C5BD'
-    const r = 14
+    const isMedia = n.kind === 'image' || n.kind === 'video'
+    // 照片 / 视频卡：白边相纸（白色外框 + 内缩照片 + 轻微圆角）
+    const r = isMedia ? 10 : 14
+    // 相纸白边宽度随卡片尺寸缩放，并限制上下限，保证小卡也有可见白边
+    const pad = isMedia ? Math.max(3, Math.min(9, Math.min(n.w, n.h) * 0.035)) : 0
+    const innerR = Math.max(2, r - pad * 0.5)
     ctx.save()
     // 统一悬停物理反馈：整体上浮（屏幕 3px，0.2s 补间由 SpaceCanvas 驱动）
     const hoverLift = (state.hoverLifts && state.hoverLifts.get(n.id)) || 0
     if (hoverLift > 0.005) ctx.translate(0, -3 * hoverLift / s)
-    const isMedia = n.kind === 'image' || n.kind === 'video'
     const borderless = isMedia || (n.kind === 'panel' && n.panelKind === 'map')
 
-    // 图片 / 视频：满幅无边框；静止微弱底线影，悬停弥散影
+    // 图片 / 视频：白边相纸（白底外框，照片内缩 pad），静止微弱底线影，悬停弥散影
     if (isMedia) {
       const src = n.media && (n.media.thumb || n.media.src)
       const img = src ? getImage(src) : null
+      const ix = n.x + pad, iy = n.y + pad
+      const iw = Math.max(1, n.w - pad * 2), ih = Math.max(1, n.h - pad * 2)
       ctx.save()
       roundRect(ctx, n.x, n.y, n.w, n.h, r)
       if (!state.flat && !state.lite) {
-        ctx.shadowColor = 'rgba(0,0,0,' + (0.05 + 0.05 * hoverLift) + ')'
-        ctx.shadowBlur = (3 + 21 * hoverLift) / s
-        ctx.shadowOffsetY = (1 + 7 * hoverLift) / s
-        ctx.fillStyle = isDark() ? '#1E1E21' : '#FFFFFF'
-        ctx.fill()
-        ctx.shadowColor = 'transparent'
+        ctx.shadowColor = 'rgba(0,0,0,' + (0.08 + 0.08 * hoverLift) + ')'
+        ctx.shadowBlur = (6 + 22 * hoverLift) / s
+        ctx.shadowOffsetY = (2 + 7 * hoverLift) / s
       }
+      ctx.fillStyle = '#FFFFFF'
+      ctx.fill()
+      ctx.shadowColor = 'transparent'
+      ctx.clip()
+      // 内侧照片区域
+      roundRect(ctx, ix, iy, iw, ih, innerR)
       ctx.clip()
       if (img) {
-        const scale = Math.max(n.w / img.width, n.h / img.height)
-        const iw = img.width * scale, ih = img.height * scale
-        ctx.drawImage(img, n.x + (n.w - iw) / 2, n.y + (n.h - ih) / 2, iw, ih)
+        const scale = Math.max(iw / img.width, ih / img.height)
+        const dw = img.width * scale, dh = img.height * scale
+        ctx.drawImage(img, ix + (iw - dw) / 2, iy + (ih - dh) / 2, dw, dh)
       } else {
         ctx.fillStyle = cardFill(color, 0.5)
-        ctx.fillRect(n.x, n.y, n.w, n.h)
+        ctx.fillRect(ix, iy, iw, ih)
         ctx.fillStyle = inkSoft()
-        ctx.font = '500 ' + Math.max(9, Math.min(13, n.w / 14)) + 'px -apple-system, sans-serif'
+        ctx.font = '500 ' + Math.max(9, Math.min(13, iw / 14)) + 'px -apple-system, sans-serif'
         ctx.textAlign = 'center'
-        ctx.fillText(n.kind === 'video' ? '视频' : '图片', n.x + n.w / 2, n.y + n.h / 2)
+        ctx.fillText(n.kind === 'video' ? '视频' : '图片', ix + iw / 2, iy + ih / 2)
         ctx.textAlign = 'left'
       }
       ctx.restore()
       if (n.kind === 'video') {
         ctx.fillStyle = 'rgba(255,255,255,0.86)'
-        ctx.beginPath(); ctx.arc(n.x + n.w / 2, n.y + n.h / 2, 16, 0, Math.PI * 2); ctx.fill()
+        ctx.beginPath(); ctx.arc(ix + iw / 2, iy + ih / 2, 16, 0, Math.PI * 2); ctx.fill()
         ctx.fillStyle = INK
         ctx.beginPath()
-        ctx.moveTo(n.x + n.w / 2 - 4, n.y + n.h / 2 - 7)
-        ctx.lineTo(n.x + n.w / 2 + 8, n.y + n.h / 2)
-        ctx.lineTo(n.x + n.w / 2 - 4, n.y + n.h / 2 + 7)
+        ctx.moveTo(ix + iw / 2 - 4, iy + ih / 2 - 7)
+        ctx.lineTo(ix + iw / 2 + 8, iy + ih / 2)
+        ctx.lineTo(ix + iw / 2 - 4, iy + ih / 2 + 7)
         ctx.closePath(); ctx.fill()
       }
       if (selected) {
@@ -698,6 +707,8 @@ export class SpaceRenderer {
     let fill = cardFill(color, 0.62)
     if (n.kind === 'space') fill = cardFill(color, 0.55)
     else if (n.cardKind === 'clock') fill = '#33322E'
+    // 天气整卡是深色磨砂卡：低缩放下画布占位保持同色，缩放跨越 DOM 阈值时不闪白
+    else if (n.kind === 'panel' && n.panelKind === 'weather') fill = '#26262A'
     else if (n.cardKind === 'audio') fill = withAlpha(color, 0.95)
     roundRect(ctx, n.x, n.y, n.w, n.h, r)
     ctx.fillStyle = fill

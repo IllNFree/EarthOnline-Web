@@ -11,6 +11,7 @@ import EntitySearchDialog from '../components/EntitySearchDialog.vue'
 import EntityRelationsPanel from '../components/EntityRelationsPanel.vue'
 import EmptyState from '../components/EmptyState.vue'
 import { BI_LINK_TYPES } from '../lib/bilink.js'
+import ws from '../space/spaceInstance.js'
 
 const store = useAppStore()
 const dialog = useDialogStore()
@@ -72,6 +73,44 @@ async function delEdit() {
   store.deletePhoto(editPhoto.value.id); store.showToast('已移入回收站'); showEditPhoto.value = false
 }
 
+// ---- 相册 → 画布：每张新照片同步生成一张独立照片卡 ----
+const PHOTO_CARD_W = 240
+const PHOTO_CARD_H = 200
+// 以相机中心为首选落点，与已有节点碰撞时按八方向逐圈外扩找空位
+function cardSpot(spaceId, w, h) {
+  const cam = (ws.space && ws.space.camera) || { x: 0, y: 0 }
+  const nodes = (ws.nodes || []).filter((n) => n.spaceId === spaceId)
+  const hit = (x, y) => nodes.some((n) => !(x + w + 16 < n.x || x > n.x + n.w + 16 || y + h + 16 < n.y || y > n.y + n.h + 16))
+  const base = { x: cam.x - w / 2, y: cam.y - h / 2 }
+  if (!hit(base.x, base.y)) return base
+  const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]]
+  for (let r = 1; r <= 8; r++) {
+    for (const [dx, dy] of dirs) {
+      const x = base.x + dx * r * (w + 24)
+      const y = base.y + dy * r * (h + 24)
+      if (!hit(x, y)) return { x, y }
+    }
+  }
+  return base
+}
+function addPhotoCard(photo) {
+  if (!photo || !photo.dataUrl) return null
+  try {
+    const spaceId = ws.currentId
+    const spot = cardSpot(spaceId, PHOTO_CARD_W, PHOTO_CARD_H)
+    const node = ws.addNode({
+      spaceId, kind: 'card', cardKind: 'image', title: photo.name || '照片',
+      x: spot.x, y: spot.y, w: PHOTO_CARD_W, h: PHOTO_CARD_H,
+      color: '#A8BBCB',
+      silent: true,
+      // 卡片只引用相册照片：原图由 IndexedDB 承载，避免 base64 挤爆画布存档
+      cardData: { photoId: photo.id, fit: 'cover' }
+    })
+    ws.saveNow()
+    return node
+  } catch (e) { return null }
+}
+
 function pick(f) {
   if (!f) return
   const r = new FileReader()
@@ -81,12 +120,14 @@ function pick(f) {
 function add() {
   const r = store.addPhoto({ ...form.value, category: '' })
   if (!r.ok) return store.showToast(r.error)
-  store.showToast('已存入相册')
+  addPhotoCard(r.photo)
+  store.showToast('已存入相册，并同步到画布')
   showAdd.value = false
   form.value = { name: '', tags: '', dataUrl: '' }
 }
 // 桌面端：拖拽本地图片到网页任意位置直接上传（需求 #14）
 function onDrop(e) {
+  // 本页自己消费拖入图片；preventDefault 让全局拖拽上传跳过同一批照片，避免写入两次
   if (batchMode.value) return
   const files = Array.from(e.dataTransfer && e.dataTransfer.files ? e.dataTransfer.files : []).filter((f) => f.type.startsWith('image/'))
   if (!files.length) return
@@ -94,7 +135,8 @@ function onDrop(e) {
   files.forEach((f) => {
     const r = new FileReader()
     r.onload = () => {
-      store.addPhoto({ name: f.name.replace(/\.[^.]+$/, ''), category: '', tags: '', dataUrl: r.result })
+      const photo = store.addPhoto({ name: f.name.replace(/\.[^.]+$/, ''), category: '', tags: '', dataUrl: r.result })
+      if (photo && photo.ok) addPhotoCard(photo.photo)
       store.showToast('已存入相册：' + f.name)
     }
     r.readAsDataURL(f)
@@ -135,15 +177,15 @@ function batchDelete() {
     </PageHeader>
 
     <div class="grid3">
-      <div v-for="p in photos" :key="p.id" class="glass thumb-round" style="position:relative;cursor:pointer"
+      <div v-for="p in photos" :key="p.id" class="thumb-round photo-card" style="position:relative;cursor:pointer"
            @click="batchMode ? toggleSelect(p.id) : openEdit(p)">
-        <img :src="p.dataUrl" class="cover-img" style="height:110px" />
+        <img :src="p.dataUrl" class="cover-img" />
         <div v-if="batchMode" style="position:absolute;top:6px;left:6px">
           <span class="chip" :style="selected.has(p.id) ? 'background:var(--eo-primary);color:#fff' : 'background:transparent;border:1px solid var(--eo-glass-border)'">
             <Icon v-if="selected.has(p.id)" name="check" :size="14" />
           </span>
         </div>
-        <div v-if="p.name" style="font-size:11px;padding:4px 6px;color:var(--eo-ink-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ p.name }}</div>
+        <div v-if="p.name" class="photo-card__name">{{ p.name }}</div>
       </div>
     </div>
     <EmptyState v-if="!photos.length" icon="album" title="还没有照片" subtitle="上传一张照片，把值得记住的瞬间存进相册。">
@@ -190,6 +232,16 @@ function batchDelete() {
 </template>
 
 <style scoped>
+/* 照片卡：白边相纸（白底内边距 + 小圆角 + 柔和投影），与画布照片卡统一 */
+.photo-card {
+  border-radius: 12px; background: #FFFFFF; border: none;
+  padding: 7px 7px 0;
+  box-shadow: 0 8px 22px -10px rgba(0, 0, 0, .26), 0 1px 0 rgba(255, 255, 255, .6) inset;
+  transition: transform .2s cubic-bezier(.22, 1, .36, 1), box-shadow .2s ease;
+}
+.photo-card:hover { transform: translateY(-2px); box-shadow: 0 14px 30px -12px rgba(0, 0, 0, .30); }
+.photo-card .cover-img { height: 110px; border-radius: 6px; }
+.photo-card__name { font-size: 11px; padding: 5px 4px 7px; color: var(--eo-ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rel-block { border-top: 1px dashed var(--eo-glass-border); margin-top: 12px; padding-top: 12px; }
 .rel-block-head { display: flex; align-items: center; justify-content: space-between; font-weight: 700; font-size: 13px; margin-bottom: 8px; }
 .rel-chips { display: flex; flex-wrap: wrap; gap: 6px; }

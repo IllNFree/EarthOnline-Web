@@ -1,6 +1,6 @@
 # 地球Online · Web
 
-![Platform](https://img.shields.io/badge/platform-Web-PWA-blue) ![Version](https://img.shields.io/badge/version-v3.0.0-orange) ![License](https://img.shields.io/badge/license-MIT-green)
+![Platform](https://img.shields.io/badge/platform-Web-PWA-blue) ![Version](https://img.shields.io/badge/version-v3.0.1-orange) ![License](https://img.shields.io/badge/license-MIT-green)
 
 同名应用的网页端，离线优先 PWA，数据存于本机 IndexedDB。
 
@@ -10,7 +10,7 @@
 
 ## 当前状态
 
-活跃开发（v3.0.0，封板日期 2026-11-06）。
+活跃开发（v3.0.1，封板日期 2026-11-08）。
 
 ## 技术栈
 
@@ -53,7 +53,9 @@ npm run dev
 - 活跃构建：`npm ci && npm run build` → `dist/`（Vite + Vue 3 + Pinia + PWA）
 - 生产服务：`npm start`（= `node server.cjs`）静态托管 `dist/` 并内置 Steam 反向代理；`index.html` 输出 `no-cache`，避免版本更新后仍命中旧缓存
 
-## 在线访问
+## 部署通道
 
-- 生产地址（唯一）：**https://earth-online-life-95391.app.workbuddy.host/**
-- 部署通道：WorkBuddy sites（非 GitHub Pages）。GitHub 仓库的 Homepage 字段已指向上述地址；任何 `*.github.io` 链接均为历史残留，已废弃，请勿使用。
+- GitHub Pages：`push main` 由 `.github/workflows/pages.yml` 自动构建 `dist/` 并发布到上面的地址，无需密钥。
+- 腾讯云 CloudBase：同一次 push 由 `deploy-cloudbase.yml` 并行部署静态托管 + 云函数 + 网关，提供账号 / 同步 / OAuth 后端。
+- WorkBuddy sites：另一条独立发布通道（https://earth-online-life-95391.app.workbuddy.host/），不由 GitHub Actions 更新。
+- 本地预览：`npm run preview`（4173）。前端数据存于本机 IndexedDB，各地址之间不共享。

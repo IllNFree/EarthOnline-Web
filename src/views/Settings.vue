@@ -3,7 +3,7 @@ import { ref, computed, watch, nextTick, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAppStore } from '../stores/app.js'
 import { APP_INFO, CHANGELOG, getLifeStats, todayStr, sanitizeState, } from '../lib/model.js'
-import { ACHIEVEMENTS, achievementRarity } from '../lib/achievements.js'
+import { ACHIEVEMENTS } from '../lib/achievements.js'
 import { downloadBackup, parseBackup, buildBackup } from '../lib/backup.js'
 import { encryptJson, decryptJson } from '../lib/canvasCrypto.js'
 import { testConnection, pushBackup, pullBackup, mergeBackup, remoteIsNewer, DEFAULT_REMOTE_PATH, loadDavConfig } from '../lib/webdav.js'
@@ -310,8 +310,8 @@ const notifState = ref(typeof Notification !== 'undefined' ? Notification.permis
 const showNotif = ref(false)
 const today = todayStr()
 // 模块四：通知精简 —— 只保留高价值事件，避免消息轰炸。
-// ① 任务临近死线（今日截止 / 已逾期，最多 6 条）② 史诗级成就解锁（legendary / epic）
-// ③ WebDAV 同步失败告警。普通 / 稀有成就不再打扰。
+// ① 任务临近死线（今日截止 / 已逾期，最多 6 条）② 最近解锁的成就（最多 4 条）
+// ③ WebDAV 同步失败告警。
 const dueItems = computed(() => {
   const out = []
   store.live.tasks.forEach((t) => {
@@ -321,19 +321,15 @@ const dueItems = computed(() => {
   })
   return out.sort((a, b) => a.rank - b.rank).slice(0, 6)
 })
-// 史诗级成就动态（仅 legendary / epic）
+// 最近解锁的成就动态（不再按等级筛选）
 const achievementNews = computed(() => {
-  return store.data.achievements.slice().reverse().filter((a) => {
-    const r = achievementRarity(a.key)
-    return r === 'legendary' || r === 'epic'
-  }).slice(0, 4).map((a) => {
+  return store.data.achievements.slice().reverse().slice(0, 4).map((a) => {
     const d = ACHIEVEMENTS.find((x) => x.key === a.key)
-    const r = achievementRarity(a.key)
     return {
       id: 'ach-' + a.key,
       icon: d ? d.icon : 'trophy',
       tone: 'good',
-      title: (r === 'legendary' ? '史诗成就：' : '高阶成就：') + (d ? d.title : a.key),
+      title: '成就解锁：' + (d ? d.title : a.key),
       sub: '解锁于 ' + a.unlockedAt,
       to: '/achievements'
     }
@@ -938,7 +934,7 @@ async function hardReset() {
         <Icon name="chevron" :size="16" />
       </div>
       <div v-if="!reminders.length" class="muted" style="text-align:center;padding:30px">
-        暂无高价值提醒。<br />任务临近截止、史诗级成就解锁或同步异常时会在这里出现。
+        暂无高价值提醒。<br />任务临近截止、成就解锁或同步异常时会在这里出现。
       </div>
     </Modal>
 

@@ -10,7 +10,7 @@ import SpaceInspector from './components/SpaceInspector.vue'
 import SpaceMinimap from './components/SpaceMinimap.vue'
 import SpaceOpenFX from './components/SpaceOpenFX.vue'
 import SpaceAiPanel from './components/SpaceAiPanel.vue'
-import { Workspace } from './core/workspace.js'
+import ws, { hadSaved } from './spaceInstance.js'
 import { ensureHomeSpace, layoutDashboard } from './core/homeSeed.js'
 import { computeLayout, descendantsOf, edgeTypeForLayout, packCardsGrouped, CARD_LIKE_KINDS } from './core/layouts.js'
 import { detectDeviceTier } from './core/perf.js'
@@ -18,15 +18,11 @@ import { useAppStore } from '../stores/app.js'
 import { APP_INFO } from '../lib/model.js'
 import { useDialogStore } from '../stores/dialog.js'
 import { builtinEnabled } from '../services/builtinPlugins.js'
-import { animateCamera } from './core/camera.js'
+import { animateCamera, screenToWorld } from './core/camera.js'
 import {
   pickDirectory, walkDirectoryHandle, collectFromDataTransfer, createMediaNodes,
   fillThumbnails, fillTextBodies, createPathMediaNodes, isDesktopShell, kindOfFile
 } from './core/media.js'
-
-const ws = new Workspace()
-const saved = ws.loadSaved()
-if (!saved) ws.seedDemo()
 
 // 属性面板（画布设置）默认收起：每次进入画布都从关闭状态开始，
 // 只有用户主动点击右侧把手 / 更多菜单 / 脑图布局入口时才打开，不再恢复上次展开状态。
@@ -175,7 +171,7 @@ onMounted(() => {
   raf = requestAnimationFrame(tickClock)
   unsubWs = ws.on((reason) => onWorkspaceChange(reason))
   // 首次进入 / 默认视图升级：等舞台量出尺寸后自动适应内容，避免卡片落到视口外
-  if (!saved || homeReady.changed) setTimeout(() => { canvasRef.value && canvasRef.value.fitView() }, 420)
+  if (!hadSaved || homeReady.changed) setTimeout(() => { canvasRef.value && canvasRef.value.fitView() }, 420)
   // 尺寸校准（一次性）：只收还在旧默认尺寸的卡片，用户手改过的尺寸不动
   if (typeof ws._calmDefaultSizes === 'function') { ws._calmDefaultSizes(); saveNow() }
   // QA / 调试钩子（只读暴露，不影响用户）
@@ -708,6 +704,60 @@ async function runPathImport() {
 function setProgress(label, done, total) {
   ui.mediaProgress = { label, done, total }
 }
+// ---- 图片导入：原图进相册（落库由 IndexedDB 承载），画布生成同款单图照片卡 ----
+// 卡片只存 photoId 引用，不把 base64 塞进画布节点（画布存档在 localStorage）
+function readFileAsDataUrl(file) {
+  return new Promise((resolve) => {
+    const rd = new FileReader()
+    rd.onload = () => resolve(String(rd.result || ''))
+    rd.onerror = () => resolve('')
+    rd.readAsDataURL(file)
+  })
+}
+async function importImagesAsPhotoCards(metas, startX, startY, cols) {
+  const created = []
+  for (let i = 0; i < metas.length; i++) {
+    const meta = metas[i]
+    const dataUrl = await readFileAsDataUrl(meta.file)
+    if (!dataUrl) continue
+    const name = meta.file.name.replace(/\.[^.]+$/, '') || '照片'
+    const r = appStore.addPhoto({ name, dataUrl, category: '', tags: '' })
+    if (!r || !r.ok) continue
+    const w = 260, h = 216, gapX = 26, gapY = 26
+    const node = ws.addNode({
+      spaceId: ws.currentId,
+      kind: 'card',
+      cardKind: 'image',
+      title: name,
+      x: startX + (i % cols) * (w + gapX),
+      y: startY + Math.floor(i / cols) * (h + gapY),
+      w, h,
+      color: '#A8BBCB',
+      silent: true,
+      cardData: { photoId: r.photo.id, fit: 'cover' }
+    })
+    if (node) created.push({ node, kind: 'photo' })
+  }
+  return created
+}
+// 图片走相册照片卡；视频 / 音频 / 文本仍走原来的媒体卡；图片网格下方接续排布
+// anchor 为拖入落点的世界坐标（否则以视口中心为起点）
+async function importMediaIntoCanvas(metas, limit, anchor) {
+  const imgs = metas.filter((m) => m.kind === 'image')
+  const rest = metas.filter((m) => m.kind !== 'image')
+  const usedImgs = limit ? imgs.slice(0, limit) : imgs
+  if (limit && imgs.length > limit) toast('照片较多，仅导入前 ' + limit + ' 张')
+  const cam = ws.space.camera || { x: 0, y: 0 }
+  const cols = Math.max(1, Math.min(4, usedImgs.length))
+  const baseX = anchor ? anchor.x : cam.x
+  const baseY = anchor ? anchor.y : cam.y
+  const startX = baseX - (cols * 260 + (cols - 1) * 26) / 2
+  const startY = baseY - 108
+  const imgCards = await importImagesAsPhotoCards(usedImgs, startX, startY, cols)
+  const rows = Math.ceil(usedImgs.length / cols)
+  const opts = imgCards.length ? { x: startX, y: startY + rows * 242 + 20 } : {}
+  return imgCards.concat(createMediaNodes(ws, rest, opts))
+}
 async function finishImport(created, sourceLabel) {
   if (!created.length) {
     toast('没有找到支持的图片 / 视频 / 音乐 / 文本')
@@ -729,7 +779,7 @@ async function finishImport(created, sourceLabel) {
   canvasRef.value && canvasRef.value.invalidate()
   const songs = created.filter((x) => x.kind === 'audio').reduce((s, x) => s + (x.count || 0), 0)
   const parts = []
-  const imgs = created.filter((x) => x.kind === 'image' || x.kind === 'video').length
+  const imgs = created.filter((x) => x.kind === 'image' || x.kind === 'video' || x.kind === 'photo').length
   if (imgs) parts.push(imgs + ' 个媒体')
   if (songs) parts.push(songs + ' 首歌单')
   if (texts.length) parts.push(texts.length + ' 个文本')
@@ -746,7 +796,7 @@ async function importFolder() {
       const metas = await walkDirectoryHandle(handle, 1, '')
       if (!metas.length) { toast('文件夹内没有找到图片 / 视频 / 音乐 / 文本'); ui.mediaProgress = null; return }
       setProgress('创建媒体节点', 0, metas.length)
-      const created = createMediaNodes(ws, metas)
+      const created = await importMediaIntoCanvas(metas, 24)
       ui.tick++
       await finishImport(created, '「' + handle.name + '」')
     } else if (folderInput.value) {
@@ -758,7 +808,7 @@ async function importFolder() {
     toast('导入失败：' + (e.message || '未知错误'))
   }
 }
-function onFolderFiles(e) {
+async function onFolderFiles(e) {
   const files = Array.from(e.target.files || [])
   const metas = []
   files.forEach((f) => {
@@ -770,12 +820,12 @@ function onFolderFiles(e) {
     metas.push({ file: f, kind, path: rel, depth })
   })
   e.target.value = ''
-  const created = createMediaNodes(ws, metas)
+  const created = await importMediaIntoCanvas(metas, 24)
   ui.tick++
   finishImport(created, '所选文件夹')
 }
 function importFiles() { fileInput.value && fileInput.value.click() }
-function onFiles(e) {
+async function onFiles(e) {
   const metas = []
   Array.from(e.target.files || []).forEach((f) => {
     const kind = kindOfFile(f)
@@ -783,19 +833,27 @@ function onFiles(e) {
   })
   e.target.value = ''
   if (!metas.length) { toast('请选择图片 / 视频 / 音乐 / 文本文件'); return }
-  const created = createMediaNodes(ws, metas)
+  const created = await importMediaIntoCanvas(metas)
   ui.tick++
   finishImport(created, '文件')
 }
 function onDrop(e) {
+  // 画布自己消费拖入内容（图片→相册+照片卡）；@drop.prevent 让全局拖拽上传跳过同一批文件
   dragCounter = 0
   ui.dragging = false
   const dt = e.dataTransfer
   if (!dt) return
   setProgress('扫描拖入内容', 0, 0)
-  collectFromDataTransfer(dt).then((metas) => {
+  // 照片卡落在用户实际拖入的位置，而不是固定盖在视口中心的仪表盘上
+  let anchor = null
+  const stageDom = stageEl.value && stageEl.value.querySelector('.space-stage')
+  if (stageDom && (e.clientX || e.clientY)) {
+    const r = stageDom.getBoundingClientRect()
+    anchor = screenToWorld(ws.space.camera, e.clientX - r.left, e.clientY - r.top, r.width, r.height)
+  }
+  collectFromDataTransfer(dt).then(async (metas) => {
     if (!metas.length) { toast('未识别到图片 / 视频 / 音乐 / 文本'); ui.mediaProgress = null; return }
-    const created = createMediaNodes(ws, metas)
+    const created = await importMediaIntoCanvas(metas, undefined, anchor)
     ui.tick++
     finishImport(created, '拖入内容')
   }).catch((err) => {

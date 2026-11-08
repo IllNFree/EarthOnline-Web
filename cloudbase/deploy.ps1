@@ -1,4 +1,4 @@
-﻿# EarthOnline · 腾讯云 CloudBase 部署脚本（PowerShell）
+﻿﻿# EarthOnline · 腾讯云 CloudBase 部署脚本（PowerShell）
 # 说明：本脚本只作为可照抄的部署步骤，必须人工逐步确认；不会自动创建环境、不会自动部署。
 # 前置：Node 18+ / npm 可用；已在仓库根目录执行 npm run build 生成 ..\dist。
 # 所有命令基于 CloudBase CLI 3.9.1（tcb fn / tcb deploy / tcb hosting / tcb routes）。

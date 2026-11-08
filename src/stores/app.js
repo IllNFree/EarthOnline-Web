@@ -104,12 +104,12 @@ export const useAppStore = defineStore('app', () => {
     clearTimeout(toastTimer)
     toastTimer = setTimeout(() => { toast.value = '' }, 2600)
   }
-  // 模块五：推送一条成就解锁到反馈队列（Haze 气泡 + 稀有度音效），6 秒后淡出（可手动关闭）
+  // 模块五：推送一条成就解锁到反馈队列（统一光效 + 同档音效），6 秒后淡出（可手动关闭）
   function notifyAchievement(meta) {
     if (!meta || !meta.key) return
     const id = ++achSeq
     achievementFeed.value.push(Object.assign({ id, leaving: false }, meta))
-    AudioService.play(meta.rarity)
+    AudioService.play()
     setTimeout(() => dismissAchievement(id), 6000)
   }
   function dismissAchievement(id) {

@@ -44,7 +44,9 @@ export function extractBiLinks(text) {
 
 /** 解析某实体（用于反向索引）：返回 { type, id, title } 或 null */
 export function resolveBiLink(state, type, id) {
-  const arr = state && state[collectionOf(type)]
+  let arr = state && state[collectionOf(type)]
+  // v3.0.x：ledger 是 { records: [] } 容器而非数组；不兼容会让账目关联全显示「未命名」
+  if (type === 'ledger' && !Array.isArray(arr) && state && state.ledger && Array.isArray(state.ledger.records)) arr = state.ledger.records
   if (!Array.isArray(arr)) return null
   const rec = arr.find((x) => x.id === id && !x.deletedAt)
   if (!rec) return null

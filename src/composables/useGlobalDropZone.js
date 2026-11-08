@@ -16,9 +16,12 @@ export function useGlobalDropZone() {
       if (depth <= 0) { depth = 0; state.dragging = false }
     }
     const onDrop = (e) => {
+      // 页面自己已处理该次拖入（如画布 @drop.prevent），全局不再重复消费文件
+      const consumed = e.defaultPrevented
       e.preventDefault()
       depth = 0
       state.dragging = false
+      if (consumed) return
       const files = Array.from((e.dataTransfer && e.dataTransfer.files) || [])
       state.files = files
       handlers.forEach((h) => { try { h(files) } catch (err) {} })

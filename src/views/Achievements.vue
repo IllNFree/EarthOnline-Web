@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { useAppStore } from '../stores/app.js'
-import { ACHIEVEMENTS, achievementRarity, achievementProgress, achievementMeta } from '../lib/achievements.js'
+import { ACHIEVEMENTS, achievementProgress, achievementMeta } from '../lib/achievements.js'
 import { todayStr } from '../lib/model.js'
 import Icon from '../components/Icon.vue'
 import Modal from '../components/GlassBottomSheet.vue'
@@ -9,7 +9,6 @@ import Modal from '../components/GlassBottomSheet.vue'
 const store = useAppStore()
 const tab = ref('all')
 const sortMode = ref('cat')
-const RARITY_LABEL = { common: '普通', rare: '稀有', epic: '史诗', legendary: '传说' }
 
 const unlockedMap = computed(() => {
   const m = {}
@@ -46,19 +45,13 @@ const counts = computed(() => {
   ACHIEVEMENTS.forEach((a) => { const c = catOf(a); m[c] = (m[c] || 0) + 1 })
   return m
 })
-const rarityStats = computed(() => {
-  const m = { common: 0, rare: 0, epic: 0, legendary: 0 }
-  ACHIEVEMENTS.forEach((a) => { if (unlockedMap.value[a.key]) m[achievementRarity(a.key)]++ })
-  return m
-})
-
-// 稀有度说明：首次显示，可关闭（localStorage 记忆）
-const RARITY_HINT_KEY = 'eo_hint_rarity'
-const showRarityHint = ref(true)
-try { showRarityHint.value = !localStorage.getItem(RARITY_HINT_KEY) } catch (e) { /* 隐私模式忽略 */ }
-function dismissRarityHint() {
-  showRarityHint.value = false
-  try { localStorage.setItem(RARITY_HINT_KEY, '1') } catch (e) { /* ignore */ }
+// 隐藏成就说明：首次显示，可关闭（localStorage 记忆）
+const HINT_KEY = 'eo_hint_hidden'
+const showHint = ref(true)
+try { showHint.value = !localStorage.getItem(HINT_KEY) } catch (e) { /* 隐私模式忽略 */ }
+function dismissHint() {
+  showHint.value = false
+  try { localStorage.setItem(HINT_KEY, '1') } catch (e) { /* ignore */ }
 }
 
 const filtered = computed(() => {
@@ -67,7 +60,6 @@ const filtered = computed(() => {
     ...a,
     unlocked: !!unlockedMap.value[a.key],
     unlockedAt: unlockedMap.value[a.key] || '',
-    rarity: achievementRarity(a.key),
     prog: achievementProgress(a.key, store.data)
   }))
   if (sortMode.value === 'recent') {
@@ -108,14 +100,9 @@ function unlockRickroll() {
         <div class="avatar" style="width:56px;height:56px"><Icon name="trophy" :size="28" /></div>
       </div>
       <div class="bar" style="margin-top:10px"><i :style="{ width: pct + '%' }"></i></div>
-      <div class="rar-row">
-        <span v-for="r in ['common', 'rare', 'epic', 'legendary']" :key="r" class="rar-chip" :class="'r-' + r">
-          {{ RARITY_LABEL[r] }} {{ rarityStats[r] }}
-        </span>
-      </div>
-      <div v-if="showRarityHint" class="ach-hint">
-        <span>普通成就显示达成条件；隐藏成就达成前不显示任何提示</span>
-        <button class="ach-hint-close" @click="dismissRarityHint">不再显示</button>
+      <div v-if="showHint" class="ach-hint">
+        <span>隐藏成就达成前不显示任何提示，其余成就均显示达成条件与进度</span>
+        <button class="ach-hint-close" @click="dismissHint">不再显示</button>
       </div>
     </div>
 
@@ -134,10 +121,10 @@ function unlockRickroll() {
 
     <div class="grid2 ach-grid">
       <div v-for="a in filtered" :key="a.key" class="glass card ach-card"
-        :class="[a.unlocked ? 'on' : 'off', 'r-' + a.rarity]"
+        :class="a.unlocked ? 'on' : 'off'"
         @click="a.key === RICK_KEY ? openBait() : null">
         <div class="row" style="gap:10px">
-          <span class="avatar ach-ico" :class="'r-' + a.rarity"><Icon :name="a.icon" :size="20" /></span>
+          <span class="avatar ach-ico"><Icon :name="a.icon" :size="20" /></span>
           <div style="flex:1;min-width:0">
             <div class="ach-name">
               {{ a.unlocked || !a.secret ? a.title : (a.key === RICK_KEY ? '??? · 千万别点' : '???') }}
@@ -151,7 +138,6 @@ function unlockRickroll() {
           </div>
           <Icon v-if="a.unlocked" name="checklist" :size="18" style="color:var(--eo-ink)" />
         </div>
-        <span v-if="a.unlocked || !a.secret" class="rar-tag" :class="'r-' + a.rarity">{{ RARITY_LABEL[a.rarity] }}</span>
       </div>
     </div>
 
@@ -173,11 +159,6 @@ function unlockRickroll() {
 .ach-big { font-size: 24px; font-weight: 800; color: var(--eo-ink); }
 .ach-total { font-size: 14px; font-weight: 600; color: var(--eo-ink-soft); }
 .ach-overview { padding-bottom: 14px; }
-.rar-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
-.rar-chip { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 99px; background: var(--eo-chip); color: var(--eo-ink-soft); }
-.rar-chip.r-rare { color: #6B6257; }
-.rar-chip.r-epic { color: #5B5147; }
-.rar-chip.r-legendary { color: #4B4238; }
 .ach-hint {
   display: flex; align-items: flex-start; gap: 10px; margin-top: 10px; padding: 8px 10px;
   border-radius: 10px; background: var(--eo-chip); font-size: 11.5px; line-height: 1.65; color: var(--eo-ink-soft);
@@ -196,16 +177,8 @@ function unlockRickroll() {
 .ach-prog { position: relative; height: 16px; margin-top: 6px; border-radius: 99px; background: var(--eo-glass-border); overflow: hidden; }
 .ach-prog i { position: absolute; inset: 0 auto 0 0; background: var(--eo-primary); opacity: .55; }
 .ach-prog span { position: relative; z-index: 1; font-size: 10px; font-weight: 700; line-height: 16px; padding-left: 7px; }
-.rar-tag { position: absolute; top: 8px; right: 8px; font-size: 9px; font-weight: 800; letter-spacing: .06em; padding: 2px 7px; border-radius: 99px; background: var(--eo-chip); color: var(--eo-ink-soft); }
-.rar-tag.r-rare { background: rgba(180, 172, 156, .35); color: #5F574E; }
-.rar-tag.r-epic { background: rgba(150, 140, 122, .4); color: #514A41; }
-.rar-tag.r-legendary { background: rgba(120, 110, 92, .5); color: #3B342B; }
-[data-theme='dark'] .rar-tag.r-rare { background: rgba(255, 255, 255, .16); color: #E4DFD6; }
-[data-theme='dark'] .rar-tag.r-epic { background: rgba(255, 255, 255, .2); color: #EFE9DF; }
-[data-theme='dark'] .rar-tag.r-legendary { background: rgba(255, 255, 255, .26); color: #FFF8EA; }
 @media (max-width: 520px) {
   .ach-big { font-size: 20px; }
-  .rar-row { gap: 4px; }
 }
 .bait { padding: 14px 2px 6px; text-align: center; }
 .bait-line { margin: 0; font-size: 16px; font-weight: 700; color: var(--eo-ink); }

@@ -8,6 +8,8 @@ const routes = [
   { path: '/backpack', name: 'backpack', component: () => import('../views/Backpack.vue'), meta: { title: '背包' } },
   { path: '/notes', name: 'notes', component: () => import('../views/Notes.vue'), meta: { title: '笔记' } },
   { path: '/album', name: 'album', component: () => import('../views/Album.vue'), meta: { title: '相册' } },
+  // 音乐播放页：入口只从画布音乐卡进入
+  { path: '/music', name: 'music', component: () => import('../views/Music.vue'), meta: { title: '音乐' } },
   { path: '/map', name: 'map', component: () => import('../views/Map.vue'), meta: { title: '足迹地图' } },
   // 模块三：Steam 游戏库插件化 —— 路由保留但受插件开关控制（关闭后自动回主页）
   { path: '/steam', name: 'steam', component: () => import('../views/Steam.vue'), meta: { title: 'Steam 游戏库', builtin: 'steam' } },

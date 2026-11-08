@@ -27,6 +27,8 @@ const { state } = useGlobalDropZone()
   background: rgba(28, 28, 27, .34);
   backdrop-filter: blur(8px) saturate(140%);
   -webkit-backdrop-filter: blur(8px) saturate(140%);
+  /* 纯提示层：不能拦截拖拽落点，否则从外部拖进画布时文件会落在浮层上而不是画布 */
+  pointer-events: none;
 }
 .drop-card {
   width: min(86vw, 420px); padding: 34px 28px; border-radius: var(--eo-radius);

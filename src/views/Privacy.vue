@@ -10,7 +10,7 @@ import Icon from '../components/Icon.vue'
         <span class="avatar" style="background:var(--eo-chip);color:var(--eo-primary-deep)"><Icon name="shield" :size="22" /></span>
         <div style="font-weight:800;font-size:17px">隐私政策</div>
       </div>
-      <div class="muted" style="font-size:12px;margin-top:4px">更新于 2026-11-06 · 适用版本 v3.0.0（Web 端）</div>
+      <div class="muted" style="font-size:12px;margin-top:4px">更新于 2026-11-08 · 适用版本 v3.0.1（Web 端）</div>
     </div>
 
     <div class="glass card">
