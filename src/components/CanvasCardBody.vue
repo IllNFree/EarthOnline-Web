@@ -350,7 +350,16 @@ const photoSrc = computed(() => {
   const p = (store.live.photos || []).find((x) => x.id === pid)
   return (p && p.dataUrl) || ''
 })
-const imgSrc = computed(() => d.value.src || photoSrc.value)
+const ephemeralSrc = ref('')
+const imgSrc = computed(() => ephemeralSrc.value || d.value.src || photoSrc.value)
+// 仅本次会话显示：不写相册、不写画布存档，刷新即失效（手机端不落库的唯一可行形态）
+function tempImageFile(f) {
+  if (!f || !f.type || !/^image\//.test(f.type)) return
+  if (ephemeralSrc.value) { try { URL.revokeObjectURL(ephemeralSrc.value) } catch (e) { /* ignore */ } }
+  ephemeralSrc.value = URL.createObjectURL(f)
+  imgBroken.value = false
+  store.showToast('仅本次显示，未写入相册或画布存档')
+}
 const imgMissing = computed(() => !!d.value.photoId && !photoSrc.value && !d.value.src)
 function importImageFile(f) {
   if (!f) return
@@ -622,6 +631,10 @@ function openFav() { favOpen.value = true; listOpen.value = false }
           <Icon name="upload" :size="13" />
           <input type="file" accept="image/*" style="display: none" @change="onImageFile" />
         </label>
+        <label class="cb-img__btn" style="right:46px;left:auto" title="仅本次显示（不入库、不占存储）" @pointerdown.stop @click.stop>
+          <span style="font-size:10px;font-weight:700">临时</span>
+          <input type="file" accept="image/*" style="display: none" @change="e => tempImageFile(e.target.files && e.target.files[0])" />
+        </label>
       </template>
       <label v-else class="cb-img__empty" @pointerdown.stop @click.stop>
         <Icon name="image" :size="24" />
@@ -665,7 +678,7 @@ function openFav() { favOpen.value = true; listOpen.value = false }
           </span>
           <span class="cb-audio__grp cb-audio__grp--end">
             <button class="cb-audio__b" title="播放页" @pointerdown.stop @click.stop="goPlayer">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9" /><path d="M4 12h9" /><path d="M4 17h5" /><circle cx="18.4" cy="15.4" r="2.6" /><path d="M21 15.4V7.6" /></svg>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M10 9.5l5 2.5-5 2.5z" /></svg>
             </button>
             <button class="cb-audio__b" title="歌单 / 音源" @pointerdown.stop @click.stop="openList">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h11" /><path d="M4 11h11" /><path d="M4 16h7" /><circle cx="18" cy="17" r="2.6" /><path d="M20.6 17V10" /></svg>

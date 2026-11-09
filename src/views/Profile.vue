@@ -258,8 +258,15 @@ function goNotes() { router.push('/notes') }
 
 // ---- 社交链接（仅展示已填写的外链） ----
 const SOCIALS = [
+  { key: 'qq', label: 'QQ', icon: 'globe', placeholder: 'QQ 号或 QQ 空间链接' },
+  { key: 'wechat', label: '微信', icon: 'globe', placeholder: '微信号或公众号' },
+  { key: 'bilibili', label: '哔哩哔哩', icon: 'play', placeholder: 'https://space.bilibili.com/…' },
+  { key: 'xiaohongshu', label: '小红书', icon: 'globe', placeholder: '小红书主页链接' },
+  { key: 'zhihu', label: '知乎', icon: 'globe', placeholder: 'https://www.zhihu.com/people/…' },
+  { key: 'tieba', label: '贴吧', icon: 'globe', placeholder: '百度贴吧主页' },
+  { key: 'xiaoheihe', label: '小黑盒', icon: 'globe', placeholder: '小黑盒主页链接' },
+  { key: 'coolapk', label: '酷安', icon: 'globe', placeholder: '酷安主页链接' },
   { key: 'github', label: 'GitHub', icon: 'branch', placeholder: 'https://github.com/yourname' },
-  { key: 'bilibili', label: 'B 站', icon: 'play', placeholder: 'https://space.bilibili.com/…' },
   { key: 'steam', label: 'Steam', icon: 'steam', placeholder: 'https://steamcommunity.com/id/…' },
   { key: 'weibo', label: '微博', icon: 'globe', placeholder: 'https://weibo.com/u/…' },
   { key: 'x', label: 'X', icon: 'globe', placeholder: 'https://x.com/yourname' }

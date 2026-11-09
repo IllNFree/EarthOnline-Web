@@ -3,6 +3,7 @@
 // 统一承载「关联 chip / 笔记 @ 引用 / 画布关联角标」的点击结果：居中玻璃弹窗，绝不跳页。
 // 关联列表里的 chip 可继续点开（带返回栈），底部次要按钮只把相机定位到画布节点。
 import { computed } from 'vue'
+import { useMediaQuery } from '@vueuse/core'
 import { useRoute, useRouter } from 'vue-router'
 import { useAppStore } from '../stores/app.js'
 import { usePreview } from '../stores/preview.js'
@@ -16,6 +17,8 @@ const { state, open, back, close } = usePreview()
 const store = useAppStore()
 const route = useRoute()
 const router = useRouter()
+// 竖屏：预览贴当前窗口右侧；桌面仍为居中玻璃弹窗
+const isSide = useMediaQuery('(max-width: 899px) and (orientation: portrait)')
 
 const TYPE_LABEL = {
   task: '任务', memo: '笔记', photo: '照片', ledger: '账目',
@@ -113,7 +116,7 @@ function focusInCanvas() {
 
 <template>
   <Teleport to="body">
-    <GlassBottomSheet :show="state.show" :title="(TYPE_LABEL[state.current?.type] || '实体') + ' · 预览'" @close="close">
+    <GlassBottomSheet :show="state.show" :side="isSide" :title="(TYPE_LABEL[state.current?.type] || '实体') + ' · 预览'" @close="close">
       <div v-if="entity" class="epd">
         <div class="epd-head">
           <button v-if="state.stack.length" class="epd-back" title="返回上一个实体" @click="back">
@@ -163,6 +166,11 @@ function focusInCanvas() {
 
 <style scoped>
 .epd { width: min(78vw, 520px); max-height: 72vh; overflow: auto; padding-right: 2px; }
+@media (max-width: 899px) and (orientation: portrait) {
+  .epd { width: 100%; max-height: none; }
+  .epd-fields { grid-template-columns: 1fr; }
+  .epd-photo, .epd-photo img { max-height: 220px; }
+}
 .epd-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
 .epd-title { margin: 0; font-size: 17px; font-weight: 700; color: var(--eo-ink); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .epd-type { flex: none; font-size: 11px; font-weight: 700; color: var(--eo-ink-soft); background: var(--eo-chip); border-radius: 999px; padding: 3px 9px; }

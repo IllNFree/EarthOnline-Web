@@ -4,6 +4,44 @@
 // 冲突判定 = 比较 remote.exportedAt 与本地 lastSyncAt，远端不比本地新则不落库。
 import { serializeBackup, parseBackup } from './backup.js'
 import { SOFT_KIND_MAP, SOFT_KINDS, sanitizeState } from './model.js'
+import { SPACE_STORAGE_KEY } from '../space/core/workspace.js'
+
+// v3.0.2：画布数据存在独立的 localStorage 存档里（旧备份只含业务表，跨设备不同步画布）。
+// 这里把画布快照挂在备份顶层（不放进 state，避免被 sanitizeState 白名单丢弃）。
+export function readLocalSpace() {
+  try { return JSON.parse(localStorage.getItem(SPACE_STORAGE_KEY) || 'null') } catch (e) { return null }
+}
+export function writeLocalSpace(obj) {
+  try { localStorage.setItem(SPACE_STORAGE_KEY, JSON.stringify(obj)); return true } catch (e) { return false }
+}
+function lwwList(localArr, remoteArr) {
+  const m = new Map()
+  ;(localArr || []).forEach((x) => { if (x && x.id) m.set(x.id, x) })
+  ;(remoteArr || []).forEach((x) => { if (x && x.id) m.set(x.id, x) })
+  return Array.from(m.values())
+}
+function mergeSpaceRaw(local, remote) {
+  if (!local) return remote
+  if (!remote) return local
+  const out = Object.assign({}, local)
+  ;['nodes', 'edges', 'drawings'].forEach((k) => { out[k] = lwwList(local[k], remote[k]) })
+  out.spaces = Object.assign({}, remote.spaces || {}, local.spaces || {})
+  out.groups = Object.assign({}, remote.groups || {}, local.groups || {})
+  out.settings = Object.assign({}, remote.settings || {}, local.settings || {})
+  out.currentId = local.currentId || remote.currentId
+  return out
+}
+/** 合并远端画布快照并就地热加载到 ws（KeepAlive 下不卸载画布） */
+export function mergeRemoteSpace(remoteSpace, ws) {
+  if (!remoteSpace || typeof remoteSpace !== 'object') return false
+  const merged = mergeSpaceRaw(readLocalSpace(), remoteSpace)
+  if (!writeLocalSpace(merged)) return false
+  try {
+    if (ws && typeof ws.load === 'function') ws.load(merged)
+    if (ws && typeof ws.touch === 'function') ws.touch('sync:space')
+  } catch (e) { /* 画布尚未挂载时，下次进入会读新存档 */ }
+  return true
+}
 
 // ===== 远端路径 =====
 export const DEFAULT_REMOTE_PATH = '/earth_online_backup.json'
@@ -51,7 +89,15 @@ export async function testConnection(cfg) {
 
 // ===== 上传 =====
 export async function pushBackup(cfg, state) {
-  const body = serializeBackup(state)
+  let body = serializeBackup(state)
+  try {
+    const rawSpace = localStorage.getItem(SPACE_STORAGE_KEY)
+    if (rawSpace) {
+      const obj = JSON.parse(body)
+      obj.space = JSON.parse(rawSpace)
+      body = JSON.stringify(obj, null, 2)
+    }
+  } catch (e) { /* 画布快照不可读时仍正常推送业务数据 */ }
   const res = await fetch(joinUrl(cfg.url, remotePathOf(cfg)), {
     method: 'PUT', headers: client(cfg), body
   })
@@ -67,7 +113,7 @@ export async function pullBackup(cfg) {
   let obj
   try { obj = JSON.parse(text) } catch (e) { return { ok: false, error: '解析失败：云端不是合法 JSON', payload: null } }
   if (!obj || !obj.state) return { ok: false, error: '备份格式不合法', payload: null }
-  return { ok: true, payload: { obj, exportedAt: obj.exportedAt || '', state: sanitizeState(obj.state) } }
+  return { ok: true, payload: { obj, exportedAt: obj.exportedAt || '', state: sanitizeState(obj.state), space: obj.space || null } }
 }
 
 // ===== 主键合并 =====

@@ -18,6 +18,13 @@ import { useAppStore } from '../../stores/app.js'
 import { usePreview } from '../../stores/preview.js'
 import { entityOf, unlinkEdge } from '../core/entityRefs.js'
 
+// 竖屏：单指空白直接平移 + 降低同屏 DOM 卡上限（流畅性）
+let portraitPan = false
+if (typeof window !== 'undefined' && window.matchMedia) {
+  const pmq = window.matchMedia('(max-width: 899px) and (orientation: portrait)')
+  portraitPan = pmq.matches
+  if (pmq.addEventListener) pmq.addEventListener('change', (e) => { portraitPan = e.matches })
+}
 const props = defineProps({
   ws: { type: Object, required: true },
   ui: { type: Object, required: true },
@@ -34,6 +41,11 @@ function relCount(n) {
 function openBoundEntity(n) {
   const e = entityOf(n)
   if (e) openPreview(e.type, e.id)
+}
+function openFolderPreview(n) {
+  const e = entityOf(n)
+  if (e) openPreview(e.type, e.id)
+  else emit('toast', '该卡未绑定实体，右键可展开连接卡片')
 }
 
 const root = ref(null)
@@ -411,7 +423,7 @@ const domNodes = computed(() => {
     if (n.x + n.w < v.x || n.x > v.x + v.w || n.y + n.h < v.y || n.y > v.y + v.h) continue
     list.push(n)
   }
-  const max = props.ui.lite ? 12 : 16
+  const max = props.ui.lite ? 12 : (portraitPan ? 8 : 16)
   let keep = list
   if (keep.length > max) {
     keep = list.slice()
@@ -741,7 +753,7 @@ function onPointerMove(e) {
     if (!emptyPress.armed && Math.hypot(sp.x - emptyPress.sx, sp.y - emptyPress.sy) > emptyPress.slop) {
       clearTimeout(emptyPress.timer)
       // 鼠标：按住移动即平移；触屏仍要求长按
-      if (emptyPress.touch) emptyPress = null
+      if (emptyPress.touch && !portraitPan) emptyPress = null
       else armEmptyPress()
     }
   }
@@ -1225,8 +1237,18 @@ function fitView() {
   const availW = Math.max(160, stage.w - padL - padR)
   const availH = Math.max(160, stage.h - padT - padB)
   let s = clampScale(Math.min(availW / Math.max(1, b.w), availH / Math.max(1, b.h)))
-  // 竖屏：限制最小适应缩放，否则首屏把整板缩成 12%，卡片全变方块、第一眼不可用
-  if (stage.w < 720) s = Math.max(s, 0.45)
+  // 竖屏：整板宽度远大于视口，强行「适应全部」只能缩到 12%（卡片变方块），
+  // 抬到 0.45 又会把左右卡片齐刷刷裁掉。首屏改为聚焦主视觉卡，其余靠单指平移浏览。
+  if (stage.w < 720) {
+    const list = (props.ws.nodes || []).filter((n) => n.spaceId === props.ws.currentId && !n.deletedAt && n.kind !== 'space')
+    const main = list.slice().sort((a, c) => (c.w * c.h) - (a.w * a.h))[0]
+    if (main) {
+      const fs = clampScale(Math.max(0.32, Math.min((stage.w - 32) / Math.max(1, main.w), 0.62)))
+      animateCameraLocal({ s: fs, x: main.x + main.w / 2, y: main.y + main.h / 2 }, 380)
+      return
+    }
+    s = Math.max(s, 0.45)
+  }
   const cx = padL + availW / 2
   const cy = padT + availH / 2
   animateCameraLocal({
@@ -1739,6 +1761,15 @@ function onContextMenu(e) {
         items.push({ label: '重命名组', icon: 'edit', action: () => openGroupEdit(gid, sp.x, sp.y) })
         items.push({ label: '解散组', icon: 'trash', action: () => { props.ws.ungroup(gid); if (props.ui.activeGroup === gid) props.ui.activeGroup = null; invalidate() } })
       }
+      const hasEdges = (props.ws.edges || []).some((x) => x.fromId === n.id || x.toId === n.id)
+      if (hasEdges) {
+        const anyCollapsed = props.ws.nodes.some((x) => x.folderCollapsed)
+        items.push({
+          label: anyCollapsed ? '展开连接卡片' : '收起连接卡片（文件夹）',
+          icon: 'layers',
+          action: () => { if (anyCollapsed) props.ws.expandConnected(n.id); else props.ws.collapseConnected(n.id); invalidate() }
+        })
+      }
       items.push({ label: '复制 (Ctrl+C)', icon: 'copy', action: () => copyCtx(n) })
       items.push({ label: '粘贴到此处 (Ctrl+V)', icon: 'copy', action: () => pasteHere(p.x, p.y) })
       // 关联连线（biLinks 派生）可在此断开：两端同步消失；纯装饰连线不在此列
@@ -2049,7 +2080,7 @@ watch(() => props.ws.settings.background, () => invalidate(), { deep: true })
     <!-- 数据卡片真实 DOM 叠层：随相机整体变换，任意缩放都保持真卡渲染 -->
     <div ref="cardLayer" class="sp-card-layer" :class="{ passive: ui.tool !== 'select', paging, 'stack-anim': stackAnim }">
       <div v-for="n in domNodes" :key="n.id" class="sp-dom-card"
-        :class="['kind-' + (n.panelKind || n.cardKind || n.kind), { selected: selectedIds.has(n.id), hovered: ui.hoverId === n.id, stacked: (n.stackIdx || 0) > 0, pressing: pressingId === n.id, 'link-source': linkSourceId === n.id, 'stack-target': stackTargetId === n.id }]"
+        :class="['kind-' + (n.panelKind || n.cardKind || n.kind), { selected: selectedIds.has(n.id), hovered: ui.hoverId === n.id, stacked: (n.stackIdx || 0) > 0, 'sp-folder-collapsed': n.folderCollapsed, pressing: pressingId === n.id, 'link-source': linkSourceId === n.id, 'stack-target': stackTargetId === n.id }]"
         :title="n.panelKind === 'map' ? '拖动整张地图卡；点右上角锁按钮后由地图接管拖动' : ''"
         :style="cardStyle(n)" @pointerdown="onCardPointerDown($event, n)" @dblclick.stop.prevent="onCardDblClick($event, n)">
         <CanvasPanelNode v-if="n.kind === 'panel'" :kind="n.panelKind" />
@@ -2060,6 +2091,7 @@ watch(() => props.ws.settings.background, () => invalidate(), { deep: true })
         </template>
         <button v-if="entityOf(n)" class="sp-rel-badge" :title="'绑定实体 · ' + relCount(n) + ' 条关联（点击预览）'"
           @pointerdown.stop @click.stop="openBoundEntity(n)">⇄ {{ relCount(n) }}</button>
+        <button v-if="n.folderCollapsed" class="sp-folder-open" title="展开预览" @pointerdown.stop @click.stop="openFolderPreview(n)">展开预览</button>
         <div v-if="selectedIds.has(n.id)" class="sp-resize-grip" title="拖动缩放卡片"
           @pointerdown.stop="onCardResize($event, n)" @dblclick.stop></div>
       </div>
@@ -2396,6 +2428,12 @@ watch(() => props.ws.settings.background, () => invalidate(), { deep: true })
   transition: transform var(--eo-lift-dur, .2s) var(--eo-lift-ease, cubic-bezier(.2,.8,.2,1)),
     box-shadow var(--eo-lift-dur, .2s) var(--eo-lift-ease, cubic-bezier(.2,.8,.2,1));
   will-change: transform;
+}
+.sp-dom-card.sp-folder-collapsed { transform: rotate(-3deg) scale(.94); opacity: .82; }
+.sp-folder-open {
+  position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); z-index: 5;
+  font-size: 11px; font-weight: 700; color: var(--eo-ink); background: var(--eo-chip);
+  border: 1px solid var(--eo-glass-border); border-radius: 999px; padding: 4px 10px; cursor: pointer;
 }
 .sp-rel-badge {
   position: absolute; top: 5px; right: 6px; z-index: 4;

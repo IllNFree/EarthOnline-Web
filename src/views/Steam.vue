@@ -141,7 +141,7 @@ const cacheHint = computed(() => {
 </script>
 
 <template>
-  <div class="page wide st-page">
+  <div class="page wide st-page st-xhh">
     <!-- 顶部个人档案卡（头像 + 等级 + 自定义网址 + 账号年龄） -->
     <div class="st-profile glass" :class="{ empty: !profile }">
       <div class="st-profile__top">
@@ -444,4 +444,21 @@ const cacheHint = computed(() => {
 .st-ach-item__body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .st-ach-item__body b { font-size: 12px; color: var(--eo-ink); font-weight: 700; }
 .st-ach-item__body i { font-size: 11px; font-style: normal; color: var(--eo-ink-soft); line-height: 1.5; }
+/* v3.0.2 小黑盒风格：深紫底 + 三列封面网格；隐藏所有依赖真实在线数据的区块 */
+.st-page.st-xhh { background: #2B1B3D; color: #F2E9F7; border-radius: 18px; }
+.st-page.st-xhh .glass { background: rgba(255,255,255,.07); border-color: rgba(255,255,255,.14); }
+.st-page.st-xhh .muted, .st-page.st-xhh .st-profile__age { color: #C9B8D8; }
+.st-page.st-xhh .st-profile__name, .st-page.st-xhh .st-top__stat b,
+.st-page.st-xhh .st-sec__title, .st-page.st-xhh .st-card__title { color: #F7F0FB; }
+.st-page.st-xhh .st-top__stat { border-color: rgba(255,255,255,.12); }
+.st-page.st-xhh .st-error, .st-page.st-xhh .st-hint,
+.st-page.st-xhh .st-rec__detail, .st-page.st-xhh .st-detail,
+.st-page.st-xhh .st-ach, .st-page.st-xhh .st-refresh { display: none !important; }
+.st-page.st-xhh .st-recent { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; overflow: visible; }
+.st-page.st-xhh .st-rec__cover, .st-page.st-xhh .st-card__cover { aspect-ratio: 3 / 4; }
+.st-page.st-xhh .st-chip { background: rgba(255,255,255,.14); color: #F7F0FB; }
+.st-page.st-xhh .btn { color: #F7F0FB; border-color: rgba(255,255,255,.22); }
+@media (max-width: 520px) {
+  .st-page.st-xhh .st-recent { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 </style>

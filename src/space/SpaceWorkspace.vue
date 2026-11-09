@@ -2,7 +2,7 @@
 // ===== 无限画布可视化工作区（v2.1） =====
 // 空间 (Space) → 画布 (Canvas) → 节点 / 绘画元素
 // 这一层只做编排：数据引擎、画布舞台、面板与空间导航；不直接绘制任何像素。
-import { reactive, computed, onMounted, onUnmounted, onActivated, ref, watch, watchEffect, nextTick } from 'vue'
+import { reactive, computed, onMounted, onUnmounted, onActivated, onDeactivated, ref, watch, watchEffect, nextTick } from 'vue'
 import Icon from '../components/Icon.vue'
 import SpaceCanvas from './components/SpaceCanvas.vue'
 import SpaceToolRail from './components/SpaceToolRail.vue'
@@ -77,25 +77,28 @@ const dialog = useDialogStore()
 // ---------- 彩蛋：无量空处（进入画布 0.5% 概率 / ?egg=void 强制，只出现一次） ----------
 const VOID_EGG_KEY = 'eo_egg_void'
 const voidEggOpen = ref(false)
-// 纯本地静态数据，不联网；四类卡片铺满全屏
+// 彩蛋两个定时器必须可清理：叠层 Teleport 到 body，KeepAlive 切页时不会随组件隐藏
+let voidEggTimer = null
+let voidEggCloseTimer = null
+function clearVoidEggTimers() {
+  clearTimeout(voidEggTimer); clearTimeout(voidEggCloseTimer)
+  voidEggTimer = null; voidEggCloseTimer = null
+}
+// 纯本地静态「伪快讯」文案，不联网抓真实新闻；铺满便利贴、2.5 秒自动关闭
 const VOID_EGG_CARDS = [
-  {
-    name: '政治',
-    items: ['联合国决议', '议会表决', '外交照会', '多边条约', '公投程序', '内阁改组', '选举人团', '主权声明', '政策白皮书', '预算审议']
-  },
-  {
-    name: '经济',
-    items: ['央行利率', '通胀数据', '汇率波动', '国债收益率', '供需曲线', '关税壁垒', '市盈率', '量化宽松', '产业链转移', '消费信心指数']
-  },
-  {
-    name: '文化',
-    items: ['电影分镜', '诗歌意象', '戏曲唱腔', '博物馆策展', '民俗仪式', '非遗名录', '出版审查', '流行音乐榜', '建筑风格', '饮食谱系']
-  },
-  {
-    name: '动漫',
-    items: ['番剧企划', '分镜稿', '声优选角', '原画作监', '同人志', '连载节奏', '世界观设定', '角色弧光', '作画监督', '周边贩售']
-  }
+  { name: '科技', items: ['量子计算原型机通过新一轮基准测试', '开源模型发布轻量版推理框架', '卫星互联网完成第 12 批组网发射', '固态电池中试线良率创新高', '城市大脑接入首批低空航线', '脑机接口临床入组人数翻倍', '端侧芯片能效比再提升 38%', '数据中心余热回收项目投运', '开源社区合并年度最大补丁集', '柔性传感材料量产成本下降'] },
+  { name: '财经', items: ['城市轨道交通日均客流创年内新高', '制造业采购经理指数回到扩张区间', '跨境结算试点覆盖新增六城', '新能源装机容量同比增 21%', '消费信心指数连续三月回升', '国债收益率曲线小幅陡峭化', '海运运价指数回落至常态区间', '小微企业信贷投放提速', '绿色债券发行规模创新高', '服务贸易逆差进一步收窄'] },
+  { name: '文化', items: ['独立游戏展公布首批入围名单', '城市图书馆上线夜间自习预约', '非遗影像计划完成首季拍摄', '美术馆推出沉浸式常设展', '诗歌节增设青年翻译单元', '老唱片修复工程开放试听', '地方戏曲完成四部经典复排', '博物馆夜场观众量翻倍', '独立书店联盟发布年度书单', '公共艺术装置落成滨江步道'] },
+  { name: '生活', items: ['早春候鸟提前两周抵达湿地', '社区共享菜园扩至 40 个点位', '城市骑行道新增三段连通线', '夜间门诊试点覆盖八家医院', '旧物循环市集单日成交破万', '社区食堂推出低盐套餐', '口袋公园完成第三批改造', '家校共育讲座报名满额', '无障碍导览覆盖全部枢纽', '周末露天影展排期公布'] },
+  { name: '体育', items: ['马拉松报名人数创赛会纪录', '青少年联赛增设女子组别', '攀岩馆新增两条速度赛道', '城市羽毛球馆延长开放', '冬季训练营公布选拔名单', '龙舟邀请赛落幕', '校园足球联赛进入淘汰赛', '公开水域游泳赛完成测线', '电竞场馆通过星级评定', '全民健身步道贯通'] },
+  { name: '教育', items: ['职业教育新增三个共建专业', '乡村学校科学实验室交付', 'open course 平台上线实验课', '阅读计划覆盖百所乡镇小学', '高校科研成果转化细则发布', '研学路线完成安全评估', '教师数字素养培训结业', '校园心理支持站扩点', '学科竞赛省赛名单公示', '终身学习学分银行试运行'] }
 ]
+const VOID_EGG_FLAT = VOID_EGG_CARDS.flatMap((c) => c.items)
+function voidNoteStyle(i) {
+  const tones = ['#FFF3C4', '#FFE0C7', '#D9EEDC', '#DCE7F7', '#F3DDF0', '#EDE6D8']
+  const rot = ((i * 37) % 7) - 3
+  return { background: tones[i % tones.length], transform: 'rotate(' + rot + 'deg)' }
+}
 function maybeVoidEgg() {
   // 路由为 hash 模式：?egg=void 既可能出现在 hash 内（#/?egg=void），也可能在真实 search 上
   let forced = false
@@ -109,7 +112,12 @@ function maybeVoidEgg() {
   }
   try { localStorage.setItem(VOID_EGG_KEY, '1') } catch (e) { /* ignore */ }
   // 延迟弹出，确保画布初始化与首帧渲染不被遮挡
-  setTimeout(() => { voidEggOpen.value = true }, 560)
+  clearVoidEggTimers()
+  voidEggTimer = setTimeout(() => {
+    voidEggOpen.value = true
+    // 2.5 秒后自动关闭，不依赖用户点击
+    voidEggCloseTimer = setTimeout(() => { voidEggOpen.value = false; clearVoidEggTimers() }, 2500)
+  }, 560)
 }
 
 // 内置插件（Steam）关闭时，画布上的对应卡片整卡隐藏：渲染 / 命中 / 框选 / 堆叠翻页全部跳过
@@ -221,6 +229,8 @@ onActivated(() => {
 let raf = 0
 let ro2 = null
 let unsubWs = null
+// 切到别的页面时立刻收起彩蛋并清定时器（Teleport 叠层否则会盖在其他页面上）
+onDeactivated(() => { clearVoidEggTimers(); voidEggOpen.value = false })
 onUnmounted(() => {
   window.removeEventListener('keydown', onKeyDown)
   window.removeEventListener('beforeunload', saveNow)
@@ -228,6 +238,8 @@ onUnmounted(() => {
   cancelAnimationFrame(raf)
   clearTimeout(fxTimer)
   clearTimeout(toastTimer)
+  clearVoidEggTimers()
+  voidEggOpen.value = false
   unsubWs && unsubWs()
   ro2 && ro2.disconnect()
   saveNow()
@@ -1185,13 +1197,8 @@ const shortHelp = [
     <Teleport to="body">
       <div v-if="voidEggOpen" class="void-egg" @click="voidEggOpen = false">
         <div class="void-wall">
-          <section v-for="c in VOID_EGG_CARDS" :key="c.name" class="void-col">
-            <h3 class="void-col-name">{{ c.name }}</h3>
-            <div v-for="it in c.items" :key="it" class="void-card">{{ it }}</div>
-          </section>
+          <div v-for="(it, i) in VOID_EGG_FLAT" :key="i" class="void-note" :style="voidNoteStyle(i)">{{ it }}</div>
         </div>
-        <div class="void-title">无量空处</div>
-        <div class="void-hint">点击任意位置关闭</div>
       </div>
     </Teleport>
 
@@ -1469,9 +1476,17 @@ const shortHelp = [
   animation: voidFade .32s ease both;
 }
 .void-wall {
-  position: absolute; inset: 14px;
-  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px;
+  position: absolute; inset: 0;
+  display: flex; flex-wrap: wrap; align-content: flex-start; gap: 12px;
+  padding: 18px; overflow: hidden;
   animation: voidWall .45s cubic-bezier(.2, .8, .2, 1) both;
+}
+.void-note {
+  width: calc(20% - 10px); min-height: 92px; flex: 0 0 auto;
+  display: flex; align-items: center; justify-content: center; text-align: center;
+  padding: 10px 12px; border-radius: 3px;
+  color: #2C2C2A; font-size: 12px; font-weight: 600; line-height: 1.5;
+  box-shadow: 0 8px 18px -10px rgba(0,0,0,.45);
 }
 .void-col {
   display: flex; flex-direction: column; gap: 6px; min-height: 0;
@@ -1507,10 +1522,8 @@ const shortHelp = [
 @keyframes voidFade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes voidWall { from { opacity: 0; transform: scale(.97); } to { opacity: 1; transform: none; } }
 @media (max-width: 899px) {
-  .void-wall { inset: 10px; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-  .void-card { font-size: 10.5px; }
-  .void-title { top: 18px; }
-  .void-hint { bottom: 18px; }
+  .void-wall { padding: 10px; gap: 8px; }
+  .void-note { width: calc(50% - 4px); min-height: 76px; font-size: 10.5px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .void-egg, .void-wall { animation: none; }

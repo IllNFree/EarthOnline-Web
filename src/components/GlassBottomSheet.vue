@@ -7,7 +7,9 @@ import Icon from './Icon.vue'
 const props = defineProps({
   title: { type: String, default: '' },
   show: { type: Boolean, default: false },
-  drawer: { type: Boolean, default: false }
+  drawer: { type: Boolean, default: false },
+  // 竖屏：贴当前窗口右侧的抽屉（不居中遮挡画布）
+  side: { type: Boolean, default: false }
 })
 const emit = defineEmits(['close'])
 
@@ -35,13 +37,18 @@ const drawerVariants = {
   animate: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 340, damping: 32, mass: 0.9 } },
   exit: { opacity: 0, y: '100%', transition: { duration: 0.2, ease: [0.4, 0, 0.2, 1] } }
 }
-const variants = computed(() => (props.drawer ? drawerVariants : panelVariants))
+const sideVariants = {
+  initial: { opacity: 0, x: '100%' },
+  animate: { opacity: 1, x: 0, transition: { type: 'spring', stiffness: 340, damping: 32, mass: 0.9 } },
+  exit: { opacity: 0, x: '100%', transition: { duration: 0.2 } }
+}
+const variants = computed(() => (props.side ? sideVariants : (props.drawer ? drawerVariants : panelVariants)))
 </script>
 
 <template>
   <AnimatePresence>
-    <motion.div v-if="show" class="modal-mask" :class="{ 'drawer-mask': drawer }" :variants="maskVariants" :initial="'initial'" :animate="'animate'" :exit="'exit'" @click.self="emit('close')">
-      <motion.div class="modal glass" :class="{ 'modal-drawer': drawer }" :variants="variants" :initial="'initial'" :animate="'animate'" :exit="'exit'">
+    <motion.div v-if="show" class="modal-mask" :class="{ 'drawer-mask': drawer, 'side-mask': side }" :variants="maskVariants" :initial="'initial'" :animate="'animate'" :exit="'exit'" @click.self="emit('close')">
+      <motion.div class="modal glass" :class="{ 'modal-drawer': drawer, 'modal-side': side }" :variants="variants" :initial="'initial'" :animate="'animate'" :exit="'exit'">
         <div class="row between" style="margin-bottom:10px">
           <h3 style="margin:0">{{ title }}</h3>
           <button class="ghost-btn" @click="emit('close')"><Icon name="x" :size="20" /></button>
@@ -61,5 +68,12 @@ const variants = computed(() => (props.drawer ? drawerVariants : panelVariants))
   max-height: 86vh;
   border-radius: 22px 22px 0 0;
   padding: 18px 20px max(22px, env(safe-area-inset-bottom));
+}
+/* 竖屏：贴窗口右侧、通高、从右滑入 */
+.modal-mask.side-mask { align-items: stretch; justify-content: flex-end; padding: 0; }
+.modal.modal-side {
+  width: min(88vw, 420px); max-height: none; height: 100%;
+  border-radius: 20px 0 0 20px;
+  padding: 18px 16px calc(18px + env(safe-area-inset-bottom));
 }
 </style>

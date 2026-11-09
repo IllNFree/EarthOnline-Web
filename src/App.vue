@@ -24,6 +24,7 @@ import { useNotificationService } from './composables/useNotificationService.js'
 import EntityPreviewDialog from './components/EntityPreviewDialog.vue'
 import ws from './space/spaceInstance.js'
 import { startEntityLinkBridge } from './space/core/entityRefs.js'
+import { loadDavConfig, pullBackup, mergeBackup, remoteIsNewer, mergeRemoteSpace } from './lib/webdav.js'
 
 const store = useAppStore()
 // 画布连线 ↔ 功能关联（biLinks）双向桥接：全局只启动一次
@@ -89,12 +90,11 @@ const wallStyle = computed(() => {
 })
 
 // 手机底栏：只放 5 个最高频入口；其余全部收进「更多」
+// 竖屏底部三 Tab（任务 / 画布 / 笔记）；其余入口统一收进右滑侧栏
 const navItems = [
-  { name: 'home', icon: 'home', label: '主页' },
   { name: 'tasks', icon: 'tasks', label: '任务' },
-  { name: 'backpack', icon: 'backpack', label: '背包' },
-  { name: 'notes', icon: 'note', label: '笔记' },
-  { name: '__more', icon: 'more', label: '更多' }
+  { name: 'home', icon: 'layout', label: '画布' },
+  { name: 'notes', icon: 'note', label: '笔记' }
 ]
 // 「更多」抽屉：保证手机端所有页面可达（Steam 跟随插件开关）
 const MORE_PAGES = [
@@ -111,6 +111,20 @@ const MORE_PAGES = [
   { name: 'settings', icon: 'settings', label: '设置' }
 ]
 const moreOpen = ref(false)
+// 右滑侧栏九项（用户指定）：个人页面 / 背包 / 相册 / 足迹 / 记账 / 数据中心 / 成就殿堂 / 插件 / 设置
+const DRAWER_PAGES = [
+  { name: 'profile', icon: 'user', label: '个人页面' },
+  { name: 'backpack', icon: 'backpack', label: '背包' },
+  { name: 'album', icon: 'album', label: '相册' },
+  { name: 'map', icon: 'map-pin', label: '足迹' },
+  { name: 'ledger', icon: 'wallet', label: '记账' },
+  { name: 'dashboard', icon: 'chart', label: '数据中心' },
+  { name: 'achievements', icon: 'trophy', label: '成就殿堂' },
+  { name: 'plugins', icon: 'puzzle', label: '插件' },
+  { name: 'settings', icon: 'settings', label: '设置' }
+]
+const sideDrawerOpen = ref(false)
+function goDrawer(n) { sideDrawerOpen.value = false; routerPush('/' + n.name) }
 const moreItems = computed(() => MORE_PAGES.filter((n) => n.name !== 'steam' || builtinEnabled(store, 'steam')))
 const moreActive = computed(() => moreItems.value.some((n) => route.name === n.name))
 function goMore(n) {
@@ -352,7 +366,38 @@ function onContextMenu(e) {
   const ok = openContextMenu(e, buildContextItems(el))
   if (!ok) { /* 开关关闭：不拦截，原生菜单出现 */ }
 }
+// 左边缘右滑呼出侧栏（竖屏专用，横滑 >60px 且纵向漂移 <60px）
+let swipeX = 0, swipeY = 0, swipeArmed = false
+function onSwipeStart(e) {
+  const t = e.touches && e.touches[0]
+  swipeArmed = !!(t && t.clientX <= 28 && !isDesktop.value && !sideDrawerOpen.value)
+  if (swipeArmed) { swipeX = t.clientX; swipeY = t.clientY }
+}
+function onSwipeEnd(e) {
+  if (!swipeArmed) return
+  swipeArmed = false
+  const t = e.changedTouches && e.changedTouches[0]
+  if (t && t.clientX - swipeX > 60 && Math.abs(t.clientY - swipeY) < 60) sideDrawerOpen.value = true
+}
 onMounted(() => {
+  window.addEventListener('touchstart', onSwipeStart, { passive: true })
+  window.addEventListener('touchend', onSwipeEnd, { passive: true })
+  // 无后端跨设备同步：启动时从 WebDAV 拉一次，仅当远端比本地新才落库（含画布快照）
+  setTimeout(async () => {
+    try {
+      const cfg = loadDavConfig()
+      if (!cfg.autoSync || !cfg.url || !navigator.onLine) return
+      const r = await pullBackup(cfg)
+      if (!r.ok) return
+      const remote = r.payload
+      if (!remoteIsNewer(remote.exportedAt, store.data.lastSyncAt)) return
+      const { patch } = mergeBackup(store.data, remote.state)
+      Object.assign(store.data, patch)
+      if (remote.space) mergeRemoteSpace(remote.space, ws)
+      store.data.lastSyncAt = remote.exportedAt || new Date().toISOString()
+      store.persist()
+    } catch (e) { /* 同步失败静默，不打断启动 */ }
+  }, 1800)
   // 模块四：注册全局右键拦截（开关关闭时 openContextMenu 自动放行原生菜单）
   ctxHandler = onContextMenu
   document.addEventListener('contextmenu', ctxHandler)
@@ -538,6 +583,22 @@ onUnmounted(() => {
           </button>
         </div>
       </div>
+    </div>
+  </transition>
+
+  <!-- 竖屏右滑侧栏：全局可达，九项 -->
+  <transition name="fade">
+    <div v-if="!isDesktop && sideDrawerOpen" class="side-drawer-mask" @click.self="sideDrawerOpen = false">
+      <aside class="side-drawer glass" @click.stop>
+        <div class="sd-head">
+          <span class="sd-title">全部功能</span>
+          <button class="ghost-btn" @click="sideDrawerOpen = false" aria-label="关闭"><Icon name="x" :size="18" /></button>
+        </div>
+        <button v-for="n in DRAWER_PAGES" :key="n.name" class="sd-item" :class="{ active: route.name === n.name }" @click="goDrawer(n)">
+          <Icon :name="n.icon" :size="18" /><span>{{ n.label }}</span>
+        </button>
+        <div class="sd-hint">从左边缘右滑可再次呼出</div>
+      </aside>
     </div>
   </transition>
 
@@ -740,4 +801,14 @@ onUnmounted(() => {
   background: var(--eo-primary); color: #fff; font-size: 13px; font-weight: 700;
 }
 
+.side-drawer-mask { position: fixed; inset: 0; z-index: 80; background: rgba(44,44,44,.24); display: flex; }
+.side-drawer { width: min(82vw, 300px); height: 100%; border-radius: 0 20px 20px 0; padding: 18px 14px calc(18px + env(safe-area-inset-bottom)); overflow: auto; }
+.sd-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.sd-title { font-size: 15px; font-weight: 600; color: var(--eo-ink); }
+.sd-item { display: flex; align-items: center; gap: 12px; width: 100%; padding: 11px 12px; border-radius: 12px; font-size: 14px; color: var(--eo-ink); background: transparent; text-align: left; }
+.sd-item:hover, .sd-item.active { background: var(--eo-chip); }
+.sd-hint { margin-top: 18px; font-size: 11px; color: var(--eo-ink-soft); text-align: center; }
+@media (max-width: 899px) and (orientation: portrait) {
+  .quick-fab { right: 84px !important; bottom: calc(env(safe-area-inset-bottom, 0px) + 92px) !important; }
+}
 </style>

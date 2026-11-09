@@ -497,6 +497,25 @@ export class Workspace {
     n.origW = null
     n.origH = null
   }
+  // v3.0.2：连接卡片「文件夹式收起」——按 ws.edges 找直连节点，用独立字段，不碰 stackId
+  collapseConnected(nodeId) {
+    const ids = new Set()
+    this.edges.forEach((e) => {
+      if (e.fromId === nodeId) ids.add(e.toId)
+      if (e.toId === nodeId) ids.add(e.fromId)
+    })
+    ids.forEach((id) => { const n = this.nodeById(id); if (n) n.folderCollapsed = true })
+    const root = this.nodeById(nodeId)
+    if (root) root.folderRoot = true
+    this.touch('node:folder')
+    return ids.size
+  }
+  expandConnected(nodeId) {
+    this.nodes.forEach((n) => { if (n.folderCollapsed) delete n.folderCollapsed })
+    const root = this.nodeById(nodeId)
+    if (root) delete root.folderRoot
+    this.touch('node:folder')
+  }
   unstack(stackId) {
     if (!stackId) return
     const members = this.nodes.filter((n) => n.stackId === stackId)

@@ -747,3 +747,10 @@ input[type="range"], input[type="checkbox"], input[type="radio"], progress {
   .bottomnav { gap: 2px; padding: 6px 8px; }
   .bottomnav .nav-item { width: 52px; }
 }
+
+/* v3.0.2 竖屏：+ 与 AI 两个悬浮球同一水平线右对齐；底部三 Tab 均分 */
+@media (max-width: 899px) and (orientation: portrait) {
+  .ai-fab { right: 18px !important; bottom: calc(env(safe-area-inset-bottom, 0px) + 92px) !important; }
+  .bottomnav { left: 12px; right: 12px; transform: none; justify-content: space-around; }
+  .bottomnav .nav-item { width: 33.33%; max-width: 120px; }
+}

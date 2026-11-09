@@ -75,6 +75,8 @@ const filtered = computed(() => {
 // 彩蛋成就「你被骗了」：点击卡片先弹「千万别点」诱饵，确认后才解锁并打开视频
 const RICK_KEY = 'egg_rickroll'
 const baitOpen = ref(false)
+const rickOpen = ref(false)
+const RICK_EMBED = 'https://player.bilibili.com/player.html?bvid=BV1GJ411x7h7&autoplay=1&high_quality=1&danmaku=0'
 function openBait() {
   if (unlockedMap.value[RICK_KEY]) return
   baitOpen.value = true
@@ -85,7 +87,8 @@ function unlockRickroll() {
   store.data.achievements.push({ key: RICK_KEY, unlockedAt: todayStr() })
   store.persist()
   store.notifyAchievement(achievementMeta(RICK_KEY))
-  try { window.open('https://www.bilibili.com/video/BV1GJ411x7h7/', '_blank') } catch (e) { /* 弹窗被拦截时忽略 */ }
+  // 点击即播：内嵌播放器层，用户手势直接触发，不再外跳新标签页
+  rickOpen.value = true
 }
 </script>
 
@@ -152,6 +155,15 @@ function unlockRickroll() {
         </div>
       </div>
     </Modal>
+
+    <Teleport to="body">
+      <div v-if="rickOpen" class="rick-mask" @click.self="rickOpen = false">
+        <div class="rick-box">
+          <iframe :src="RICK_EMBED" allow="autoplay; encrypted-media; fullscreen" allowfullscreen scrolling="no" frameborder="0"></iframe>
+          <button class="btn" @click="rickOpen = false">关闭</button>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -185,4 +197,8 @@ function unlockRickroll() {
 .bait-sub { margin: 6px 0 16px; font-size: 13px; color: var(--eo-ink-soft); }
 .bait-actions { display: flex; gap: 10px; justify-content: center; }
 .bait-actions .btn { min-width: 96px; }
+.rick-mask { position: fixed; inset: 0; z-index: 95; background: rgba(20,18,24,.86); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.rick-box { width: min(92vw, 860px); display: flex; flex-direction: column; gap: 10px; }
+.rick-box iframe { width: 100%; aspect-ratio: 16 / 9; border: 0; border-radius: 14px; background: #000; }
+.rick-box .btn { align-self: flex-end; }
 </style>

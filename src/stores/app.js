@@ -38,7 +38,9 @@ export const useAppStore = defineStore('app', () => {
     items: data.items.filter((x) => !x.deletedAt),
     collections: data.collections.filter((x) => !x.deletedAt),
     locations: data.locations.filter((x) => !x.deletedAt),
-    photos: data.photos.filter((x) => !x.deletedAt)
+    photos: data.photos.filter((x) => !x.deletedAt),
+    // ledger 是 { records: [] } 容器，摊平后供关联/预览读取
+    ledger: (data.ledger && Array.isArray(data.ledger.records) ? data.ledger.records : []).filter((x) => !x.deletedAt)
   }))
   // 回收站：由 deletedAt 实时派生（不再单独存 trash 数组）
   const trashItems = computed(() => trashList(data))

@@ -6,7 +6,8 @@ import { APP_INFO, CHANGELOG, getLifeStats, todayStr, sanitizeState, } from '../
 import { ACHIEVEMENTS } from '../lib/achievements.js'
 import { downloadBackup, parseBackup, buildBackup } from '../lib/backup.js'
 import { encryptJson, decryptJson } from '../lib/canvasCrypto.js'
-import { testConnection, pushBackup, pullBackup, mergeBackup, remoteIsNewer, DEFAULT_REMOTE_PATH, loadDavConfig } from '../lib/webdav.js'
+import { testConnection, pushBackup, pullBackup, mergeBackup, remoteIsNewer, DEFAULT_REMOTE_PATH, loadDavConfig, mergeRemoteSpace } from '../lib/webdav.js'
+import ws from '../space/spaceInstance.js'
 import { loadCloudConfig, saveCloudConfig, cloudRegister, cloudSendCode, cloudVerifyEmail, cloudResetPassword, cloudLogin, cloudLogout, cloudSyncNow, cloudHealth } from '../lib/cloud.js'
 import { importBillToLedger, importMarkdownToNotes } from '../services/DataImporter.js'
 import Icon from '../components/Icon.vue'
@@ -107,6 +108,14 @@ function loadDav() { return loadDavConfig() }
 const dav = ref(loadDav())
 const davMsg = ref('')
 const davBusy = ref(false)
+// 局域网 WebDAV 能力检测：https 站点访问内网 http 会被浏览器混合内容策略拦截
+const lanHint = computed(() => {
+  const u = String(dav.value.url || '')
+  const lan = /^http:\/\/(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(u)
+  if (!lan) return ''
+  if (location.protocol === 'https:') return '当前站点是 https，浏览器会拦截对局域网 http 地址的请求。请改用 https WebDAV，或用 http://<电脑IP> 打开本站后再同步。'
+  return '局域网模式：手机与电脑需在同一 WiFi，且电脑上的 WebDAV 服务需常开；连接失败会自动回退到普通 WebDAV。'
+})
 function saveDav() { try { localStorage.setItem(DAV_KEY, JSON.stringify(dav.value)) } catch (e) {} }
 
 // ---------- 自建云端账号 / 同步（账号可选，仅用于多端同步） ----------
@@ -501,6 +510,7 @@ async function davPull() {
   }
   const { patch, added } = mergeBackup(store.data, remote.state)
   applyMerge(patch, '已按主键合并，新增 ' + added + ' 条')
+  if (remote.space) mergeRemoteSpace(remote.space, ws)
   store.data.lastSyncAt = remote.exportedAt || new Date().toISOString()
   store.persist()
   store.setSyncError('')
@@ -821,6 +831,7 @@ async function hardReset() {
               <div v-if="cloudMsg" class="muted" style="font-size:12px;margin-top:8px">{{ cloudMsg }}</div>
             </div>
             <div class="field"><label>WebDAV 地址</label><input v-model="dav.url" placeholder="https://dav.example.com/" @change="saveDav" /></div>
+            <div v-if="lanHint" class="muted" style="font-size:12px;margin:-4px 0 10px;line-height:1.6">{{ lanHint }}</div>
             <div class="row" style="gap:8px">
               <div class="field" style="flex:1"><label>账号</label><input v-model="dav.user" @change="saveDav" /></div>
               <div class="field" style="flex:1"><label>密码</label><input v-model="dav.pass" type="password" @change="saveDav" /></div>
@@ -833,7 +844,7 @@ async function hardReset() {
             <div class="glass card row between" style="margin-bottom:10px">
               <div style="flex:1;min-width:0">
                 <div style="font-weight:600">自动同步</div>
-                <div class="muted" style="font-size:12px">本页任意数据变更后自动推送云端（对齐 Android AUTO_SYNC）</div>
+                <div class="muted" style="font-size:12px">数据或画布变更后自动推送云端；启动时自动拉取一次（对齐 Android AUTO_SYNC）</div>
               </div>
               <button class="switch" :class="{ on: dav.autoSync }" aria-label="自动同步" @click="dav.autoSync = !dav.autoSync; saveDav()"><i></i></button>
             </div>
