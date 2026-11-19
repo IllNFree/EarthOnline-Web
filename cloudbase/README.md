@@ -2,20 +2,22 @@
 
 国内可直连的 CloudBase 版：一个云函数 `api` + 云数据库 + 静态托管，API 契约与 `server/`、`cloudflare/` 完全一致。代码自包含，首次请求自动创建集合。
 
-## 部署（在 `cloudbase/` 执行，共 6 条）
+## 部署（在仓库根 `EarthOnline-Web/` 执行）
+> CloudBase CLI 3.9.4 起禁止配置路径指向项目目录外（如 `root: ".."`），因此 `cloudbaserc.json` 需放在仓库根，`functionRoot`/`hosting.root` 均为项目内相对路径。
+
 ```powershell
 npm i -g @cloudbase/cli
 tcb login
 tcb env list                              # 记下环境 ID
-tcb deploy --only functions -e <envId>    # 部署 api，并下发 cloudbaserc 里的 envVariables
-tcb deploy --only hosting   -e <envId>    # 上传 ../dist（先 npm run build）
-tcb deploy --only gateway   -e <envId>    # 绑定 /api → function:api
+npm run build                             # 生成 dist/
+tcb deploy --only functions,hosting,gateway -e <envId>
 ```
+配置文件：复制 `cloudbase/cloudbaserc.example.json` 到仓库根改名 `cloudbaserc.json` 并填入真实值。
 `deploy.ps1` 是逐步确认版（含失败提示），不会自动执行；可先跑 `tcb deploy --dry-run -e <envId>` 预览。
 
-## 环境变量（cloudbaserc.json → functions[0].envVariables）
-> `cloudbase/cloudbaserc.json` 含密钥，已加入 `.gitignore`，**不要提交**。仓库里只保留 `cloudbaserc.example.json`。
-> 本地部署：复制 example → cloudbaserc.json 并填入真实值；CI 部署：由 GitHub Secrets 在流水线里动态生成。
+## 环境变量（仓库根 cloudbaserc.json → functions[0].envVariables）
+> 仓库根的 `cloudbaserc.json` 含密钥，已加入 `.gitignore`，**不要提交**。仓库里只保留 `cloudbase/cloudbaserc.example.json`。
+> 本地部署：复制 example → 仓库根 `cloudbaserc.json` 并填入真实值；CI 部署：由 GitHub Secrets 在流水线里动态生成。
 
 | 变量 | 必填 | 说明 |
 | --- | --- | --- |
@@ -35,4 +37,4 @@ tcb deploy --only gateway   -e <envId>    # 绑定 /api → function:api
 - 冷启动首次会建集合、派生密钥，略慢；免费额度下并发实例有限。
 
 ## 本地自测
-`cd functions/api && npm install`，然后 `node ../../test-runner.mjs`（内存假 DB，覆盖 10 个路由与持久化读写）。
+`cd cloudbase/functions/api && npm install`，然后 `node ../../test-runner.mjs`（内存假 DB，覆盖 10 个路由与持久化读写）。

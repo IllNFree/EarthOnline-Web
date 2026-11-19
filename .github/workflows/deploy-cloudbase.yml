@@ -78,7 +78,7 @@ jobs:
           EO_DEBUG: ${{ secrets.EO_DEBUG }}
           GITHUB_CLIENT_ID: ${{ secrets.GITHUB_CLIENT_ID }}
           GITHUB_CLIENT_SECRET: ${{ secrets.GITHUB_CLIENT_SECRET }}
-        run: node .github/scripts/gen-cloudbaserc.mjs cloudbase/cloudbaserc.json
+        run: node .github/scripts/gen-cloudbaserc.mjs cloudbaserc.json
 
       - name: Login CloudBase
         if: steps.guard.outputs.ready == 'true'
@@ -86,7 +86,6 @@ jobs:
 
       - name: Deploy
         if: steps.guard.outputs.ready == 'true'
-        working-directory: cloudbase
         run: tcb deploy --only functions,hosting,gateway -e "${{ secrets.TCB_ENV_ID }}"
 
       - name: Smoke test

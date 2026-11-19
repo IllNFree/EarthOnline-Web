@@ -19,6 +19,7 @@ webroot/
 server/data/
 
 # 部署配置（含 EO_MASTER_KEY / SMTP_PASS 等密钥，只保留 example 模板入库）
+/cloudbaserc.json
 cloudbase/cloudbaserc.json
 cloudbase/.env.local
 .env

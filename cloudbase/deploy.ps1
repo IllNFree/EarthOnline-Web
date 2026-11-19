@@ -1,10 +1,11 @@
 ﻿﻿# EarthOnline · 腾讯云 CloudBase 部署脚本（PowerShell）
 # 说明：本脚本只作为可照抄的部署步骤，必须人工逐步确认；不会自动创建环境、不会自动部署。
-# 前置：Node 18+ / npm 可用；已在仓库根目录执行 npm run build 生成 ..\dist。
-# 所有命令基于 CloudBase CLI 3.9.1（tcb fn / tcb deploy / tcb hosting / tcb routes）。
+# 前置：Node 18+ / npm 可用；已在仓库根目录执行 npm run build 生成 dist。
+# 所有命令基于 CloudBase CLI 3.9.4+（tcb fn / tcb deploy / tcb hosting / tcb routes）；
+# 3.9.4 起禁止配置路径指向项目目录外，cloudbaserc.json 需放在仓库根、路径全部为项目内相对路径。
 
 $ErrorActionPreference = 'Stop'
-Set-Location -LiteralPath $PSScriptRoot
+Set-Location -LiteralPath (Split-Path -Parent $PSScriptRoot)
 
 function Confirm-Step([string]$title) {
   Write-Host ""
@@ -25,11 +26,11 @@ function Stop-WithHint([string]$message, [string]$hint) {
 }
 
 # ---------- 0. 前置检查 ----------
-if (-not (Test-Path -LiteralPath '..\dist\index.html')) {
-  Stop-WithHint '找不到 ..\dist\index.html' '先在 EarthOnline-Web 根目录执行 npm install && npm run build，再运行本脚本。'
+if (-not (Test-Path -LiteralPath 'dist\index.html')) {
+  Stop-WithHint '找不到 dist\index.html' '先在 EarthOnline-Web 根目录执行 npm install && npm run build，再运行本脚本。'
 }
 
-$rcPath = Join-Path $PSScriptRoot 'cloudbaserc.json'
+$rcPath = Join-Path (Get-Location) 'cloudbaserc.json'
 $rc = Get-Content -LiteralPath $rcPath -Raw | ConvertFrom-Json
 $masterKey = $rc.functions[0].envVariables.EO_MASTER_KEY
 if (-not $masterKey -or $masterKey -like '<*') {
@@ -89,7 +90,7 @@ if (Confirm-Step '确认环境变量已下发（tcb fn detail api --json）') {
 }
 
 # ---------- 6. 部署静态托管 ----------
-# cloudbaserc.json 的 hosting[0]：root=..、outputDir=dist，即上传 ../dist 到站点根路径。
+# 仓库根 cloudbaserc.json 的 hosting[0]：root=.、outputDir=dist，即上传仓库根 dist 到站点根路径。
 if (Confirm-Step '部署静态托管（tcb deploy --only hosting）') {
   tcb deploy --only hosting -e $EnvId
   if ($LASTEXITCODE -ne 0) { Stop-WithHint '静态托管部署失败' '确认 ..\dist 已构建；如提示缺少静态托管应用，先按 CLI 提示创建或改用 tcb hosting deploy ../dist -e <envId>。' }

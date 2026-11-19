@@ -1,5 +1,7 @@
-// CI 专用：由 GitHub Secrets 动态生成 cloudbase/cloudbaserc.json
+// CI 专用：由 GitHub Secrets 动态生成仓库根目录的 cloudbaserc.json
 // 仓库里只提交 cloudbaserc.example.json；真实密钥只在 runner 内存与临时文件里存在，不入库。
+// 路径说明：CLI 以配置文件所在目录（仓库根）为 project root，所有路径必须在项目内
+//（CloudBase CLI 3.9.4 起禁止 hosting.root 指向项目目录之外，如 ".."）。
 import fs from 'node:fs'
 import path from 'node:path'
 
@@ -38,14 +40,14 @@ const config = {
   $schema: 'https://static.cloudbase.net/cli/cloudbaserc.schema.json',
   version: '2.1',
   envId,
-  functionRoot: './functions',
+  functionRoot: './cloudbase/functions',
   functions: [
     {
       name: 'api',
       description: 'EarthOnline 账号 / 同步 / OAuth 网关（HTTP 访问服务入口，Event 函数）',
       runtime: 'Nodejs18.15',
       handler: 'index.main',
-      dir: './functions/api',
+      dir: './cloudbase/functions/api',
       timeout: 30,
       memorySize: 256,
       installDependency: true,
@@ -55,7 +57,7 @@ const config = {
   hosting: [
     {
       name: 'earthonline',
-      root: '..',
+      root: '.',
       framework: 'static',
       outputDir: 'dist',
       deployPath: '/',
