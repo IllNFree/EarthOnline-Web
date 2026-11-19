@@ -95,9 +95,11 @@ jobs:
           EO_PUBLIC_BASE_URL: ${{ secrets.EO_PUBLIC_BASE_URL }}
           TCB_ENV_ID: ${{ secrets.TCB_ENV_ID }}
         run: |
-          BASE="${EO_PUBLIC_BASE_URL:-https://${TCB_ENV_ID}-1517552805.tcloudbaseapp.com}"
-          BASE="${BASE%/}"
+          SITE="https://${TCB_ENV_ID}-1517552805.tcloudbaseapp.com"
+          # /api 网关挂在 HTTP 访问服务默认域名（service.tcloudbase.com），不在静态托管域名上
+          API="${EO_PUBLIC_BASE_URL:-https://${TCB_ENV_ID}.service.tcloudbase.com}"
+          API="${API%/}"
           echo "等待静态托管生效…"
           sleep 5
-          curl -fsS "$BASE/" -o /dev/null && echo "站点 200 OK"
-          curl -fsS "$BASE/api/health" && echo "健康检查 OK"
+          curl -fsS "$SITE/" -o /dev/null && echo "站点 200 OK"
+          curl -fsS "$API/api/health" && echo "健康检查 OK"
