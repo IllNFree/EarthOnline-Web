@@ -86,7 +86,8 @@ jobs:
 
       - name: Deploy
         if: steps.guard.outputs.ready == 'true'
-        run: tcb deploy --only functions,hosting,gateway -e "${{ secrets.TCB_ENV_ID }}"
+        # --yes：云端已存在同名函数时跳过覆盖确认（CI 无交互终端，官方文档 FAQ #4）
+        run: tcb deploy --only functions,hosting,gateway --yes -e "${{ secrets.TCB_ENV_ID }}"
 
       - name: Smoke test
         if: steps.guard.outputs.ready == 'true'
